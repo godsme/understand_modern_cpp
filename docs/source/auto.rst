@@ -1,4 +1,4 @@
-auto类型推演
+**auto** 类型推演
 ===================
 
 ``auto`` 类型推演脱胎于模版函数的类型推演，它们的能力几乎等价（除了初始化列表的情况）。
@@ -217,7 +217,4 @@ decltype(auto)
 
    template <typename T>
    auto f(T a, auto b, T c, auto d); // a, c 必须同一类型，b, d 各自有各自类型
-
-
-
 
