@@ -8,34 +8,38 @@
 
 在 `C++11` 之前，表达式分类为 **左值表达式** 和 **右值表达式** ，简称 **左值** 和 **右值** 。**左值** 都对应着一个明确的对象；而 **右值** 表达式有些场景下，也会隐含的创建一个 **临时对象** 。
 
-比如 ``Foo(10)`` ，在 ``C++98`` 的年代，其语意是：以 ``10`` 来构造一个 ``Foo`` 类型的临时对象。而这个表达式属于 **右值** 。
+比如 ``Foo(10)`` ，在 `C++98` 的年代，其语意是：以 ``10`` 来构造一个 ``Foo`` 类型的临时对象。而这个表达式属于 **右值** 。
 
 而引用，从 ``constness`` 的角度，可以分为： ``non-const ref`` 和 ``const ref`` 。
 
 因而，``constness`` 和 所需要引用的 **对象类别** 组合在一起，一共能产生四种类型的引用：
 
-1. non-const lvalue ref
-2. const     lvalue ref
-3. const     rvalue ref
-4. non-const rvalue ref
+1. **non-const lvalue ref**
+2. **const     lvalue ref**
+3. **const     rvalue ref**
+4. **non-const rvalue ref**
 
 在 `C++11` 之前，通过符合 ``&`` 和 ``const`` 的两种组合，可以覆盖三种场景：
 
 1. ``Foo&``
 
-  - non-const lvalue ref
+  - **non-const lvalue ref**
+
     比如： ``Foo foo(10); Foo& ref = foo;``
 
 2. ``const Foo&``
 
-   - const lvalue
+   - **const lvalue ref**
+
      比如： ``Foo foo(10); const Foo& ref = foo;``
-   - const rvalue
+
+   - **const rvalue ref**
+
      比如： ``const Foo& ref = Foo(10);``
 
-但对于 non-const rvalue ref 无法表达。
+但对于 **non-const rvalue ref** 无法表达。
 
-好在那时候并没有 ``move`` 语意的支持，因而对于 ``non-const rvalue ref`` 的需求也并不强烈。
+好在那时候并没有 ``move`` 语意的支持，因而对于 **non-const rvalue ref** 的需求也并不强烈。
 
 
 **move** 语意
@@ -129,7 +133,7 @@
       non_movable(const non_movable&);
    };
 
-答案是看情况， 至少在 ``C++11`` 之前， 一个右值，就可以被类型为 ``const T&`` 类型的参数匹配；
+答案是看情况， 至少在 `C++11` 之前， 一个右值，就可以被类型为 ``const T&`` 类型的参数匹配；
 但一个右值，不能被 ``T&`` 类型的参数匹配；毕竟这种可以修改的承诺，作用在一个调用后即消失的临时对象上，没有任何意义，
 反而会导致程序员潜在的犯下错误，因而还是禁止了最好。
 
@@ -273,14 +277,11 @@
 从而让用户可以实现任意复杂的逻辑，然后通过返回值为 **右值引用** 的方式，直接初始化一个右值引用类型的变量。
 以此来达到匹配 ``move`` 构造， ``move`` 赋值函数，以及任何其它参数类型为右值引用的函数的目的。
 
-
-`C++` 标准
-对其的定义为：
+`C++` 标准对其的定义为：
 
 xvalue:
    an xvalue (an “eXpiring” value) is a glvalue that denotes an object or bit-field whose resources can be reused.
 
 意思就是，这类表达式表明了自己可以被赋值给一个类型为 **右值引用** 的变量，当然自然也就可以被 ``move`` 构造和 ``move`` 赋值操作
 自然匹配，从而返回的引用所引用的对象可以通过 ``move`` 而被重用。
-
 
