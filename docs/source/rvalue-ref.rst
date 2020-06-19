@@ -6,47 +6,49 @@
 缺失的拼图
 -------------
 
-在 `C++11` 之前，表达式分类为 **左值表达式** 和 **右值表达式** ，简称 **左值** 和 **右值** 。**左值** 都对应着一个明确的对象；而 **右值** 表达式有些场景下，也会隐含的创建一个 **临时对象** 。
+在 `C++11` 之前，表达式分类为 **左值表达式** 和 **右值表达式** ，
+简称 **左值** 和 **右值** 。**左值** 都对应着一个明确的对象；
+而 **右值** 表达式有些场景下，也会隐含着创建一个 **临时对象** 的语意。
 
 比如 ``Foo(10)`` ，在 `C++98` 的年代，其语意是：以 ``10`` 来构造一个 ``Foo`` 类型的临时对象。而这个表达式属于 **右值** 。
 
-而引用，从 ``constness`` 的角度，可以分为： ``non-const ref`` 和 ``const ref`` 。
+而引用，从 constness 的角度，可以分为： **non-const reference** 和 **const reference** 。
 
-因而，``constness`` 和 所需要引用的 **对象类别** 组合在一起，一共能产生四种类型的引用：
+因而， **constness** 和 **引用** 的 **对象类别** 组合在一起，一共能产生四种类型的引用：
 
-1. **non-const lvalue ref**
-2. **const     lvalue ref**
-3. **const     rvalue ref**
-4. **non-const rvalue ref**
+1. **non-const lvalue reference**
+2. **const     lvalue reference**
+3. **const     rvalue reference**
+4. **non-const rvalue reference**
 
 在 `C++11` 之前，通过符合 ``&`` 和 ``const`` 的两种组合，可以覆盖三种场景：
 
 1. ``Foo&``
 
-  - **non-const lvalue ref**
+  - **non-const lvalue reference**
 
     比如： ``Foo foo(10); Foo& ref = foo;``
 
 2. ``const Foo&``
 
-   - **const lvalue ref**
+   - **const lvalue reference**
 
      比如： ``Foo foo(10); const Foo& ref = foo;``
 
-   - **const rvalue ref**
+   - **const rvalue reference**
 
      比如： ``const Foo& ref = Foo(10);``
 
-但对于 **non-const rvalue ref** 无法表达。
+但对于 **non-const rvalue reference** 无法表达。
 
-好在那时候并没有 ``move`` 语意的支持，因而对于 **non-const rvalue ref** 的需求也并不强烈。
+好在那时候并没有 ``move`` 语意的支持，因而对于 **non-const rvalue reference** 的需求也并不强烈。
 
 
 **move** 语意
 -------------------
 
 `C++11` 之前，只有 ``copy`` 语意，这对于极度关注性能的语言而言是一个重大的缺失。那时候程序员为了避免性能损失，
-只好采取规避的方式，比如对于 ``std::string`` :
+只好采取规避的方式。比如:
 
 .. code-block:: c++
 
@@ -62,8 +64,8 @@
 则必须忍受一个 ``s1 + s2`` 所导致的中间 **临时对象** 到 `str` 的拷贝开销。
 即便那个中间临时对象随着表达式的结束，会被销毁（更糟的是，销毁所伴随的资源释放，也是一种性能开销）。
 
-对于 ``move`` 语意的急迫需求，到了 `C++11` 终于被引入。其直接的驱动力很简单：在构造，或者赋值时，
-如果等号右侧是一个中间临时对象，应直接将其占用的资源直接 ``move`` 过来（从而对方就没有了）。
+对于 ``move`` 语意的急迫需求，到了 `C++11` 终于被引入。其直接的驱动力很简单：在构造或者赋值时，
+如果等号右侧是一个中间临时对象，应直接将其占用的资源直接 ``move`` 过来（对方就没有了）。
 
 但问题是，如何让一个构造函数，或者赋值操作重载函数能够识别出来这是一个临时变量？
 
@@ -78,16 +80,16 @@
 
 参数类型都是 ``const &`` ，它可以匹配到三种情况：
 
-1. non-const lvalue ref
-2. const lvalue ref
-3. const rvalue ref
+1. **non-const lvalue reference**
+2. **const lvalue reference**
+3. **const rvalue reference**
 
-对于 ``non-const rvalue ref`` 是无能为力的。 另外，即便是能捕捉 ``const rvalue ref`` ，
+对于 **non-const rvalue reference** 是无能为力的。 另外，即便是能捕捉 **const rvalue reference** ，
 比如： ``foo = Foo(10);`` ，但其 ``const`` 修饰也保证了其资源不可能被 ``move`` 走。
 
-因而，能够被 ``move`` 走资源的，恰恰是之前缺失的那种引用类型： ``non-const rvalue ref`` 。
+因而，能够被 ``move`` 走资源的，恰恰是之前缺失的那种引用类型： **non-const rvalue reference** 。
 
-这时候，就需要有一种表示法，明确识别出那是一种 ``non-const rvalue ref`` ，最后定下来的表示法是 ``T&&`` 。
+这时候，就需要有一种表示法，明确识别出那是一种 **non-const rvalue reference** ，最后定下来的表示法是 ``T&&`` 。
 这样，就可以这样来定义不同方式的构造和赋值操作：
 
 .. code-block:: c++
@@ -284,4 +286,5 @@ xvalue:
 
 意思就是，这类表达式表明了自己可以被赋值给一个类型为 **右值引用** 的变量，当然自然也就可以被 ``move`` 构造和 ``move`` 赋值操作
 自然匹配，从而返回的引用所引用的对象可以通过 ``move`` 而被重用。
+
 
