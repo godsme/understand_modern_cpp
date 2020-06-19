@@ -8,6 +8,7 @@ Understanding Modern C++
    :caption: 目录
 
    rvalue-ref
+   Value-category
 
 
 
