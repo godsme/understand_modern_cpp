@@ -128,7 +128,7 @@ decltype(auto)
 由于 ``auto`` 推演总是会丢弃 **引用** 及 ``const`` 信息，明确给出 **引用** 又总是得到一个引用。明确给出 ``const`` ，
 则总是得到一个 ``const`` 类型。这对于想精确遵从等号后面类型的情况非常不便，尤其在进行泛型编程时，很难通过 `auto` 符合通用的情况。
 
-而 ``decltype`` 恰恰相反，它总是能准确捕捉右侧表达式的类型，因而，我们可以这样写：
+而 ``decltype`` 恰恰相反，它总是能准确捕捉右侧表达式的类型（参见 :ref:`decltype` ）。因而，我们可以这样写：
 
 .. code-block:: c++
 
@@ -155,5 +155,69 @@ decltype(auto)
    decltype(auto)   v1 = foo;    // Foo
    decltype(auto)   v2 = (foo);  // Foo&
    decltype(auto)   v7 = (a > 0 ? Foo{0}.a : Foo{1}.a); // int&&
+
+
+函数返回值类型的自动推演
+--------------------------
+
+到了 ``C++14`` 之后，对于普通函数的返回值自动推演，可以通过 ``auto`` 来完成，比如：
+
+.. code-block:: c++
+
+   auto f() { return Foo{1}.a; } // 返回值类型为int
+
+当然，如果希望返回值类型运用 ``decltype`` 规则，则可以用 ``decltype(auto)`` 。比如：
+
+.. code-block:: c++
+
+   auto f() -> decltype(auto) { // 返回值为int&&
+     return (Foo{1}.a);
+   }
+
+
+非类型模版参数
+--------------------
+
+.. code-block:: c++
+
+   template <auto V>
+   struct C
+   {
+      // ....
+   };
+
+   C<10>   a; // C<int>
+   C<'c'>  b; // C<char>
+   C<true> c; // C<bool>
+
+
+函数模版的便捷写法
+-------------------
+
+.. code-block:: c++
+
+   template <typename T1, typename T2>
+   auto add(T1 lhs, T2 rhs) {
+      return lhs + rhs;
+   }
+
+
+到了 ``C++20`` ，允许让普通函数可以有更加便捷的写法：
+
+.. code-block:: c++
+
+   auto add(auto lhs, auto rhs) {
+      return lhs + rhs;
+   }
+
+
+当然，如果你想指明两个参数属于同一种类型，但另外的参数没有这样的约束，则仍然需要写模版头：
+
+.. code-block:: c++
+
+   template <typename T>
+   auto f(T a, auto b, T c, auto d); // a, c 必须同一类型，b, d 各自有各自类型
+
+
 
 
