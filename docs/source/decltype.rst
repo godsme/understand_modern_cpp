@@ -36,6 +36,8 @@
    int a = 0;
    const int b = 1;
    const Foo foo = {10};
+   Foo&& rref = Foo{1};
+   const Foo& ref = foo;
    char c[2] = {1, 2};
    int* p = &a;
    const Foo* pFoo = &foo;
@@ -57,6 +59,8 @@
    decltype((pFoo))    v12;  // const Foo*&
    decltype((pFoo->a)) v13;  // const int&
    decltype((Foo::a))  v14;  // int&
+   decltype((rref))    v15;  // Foo&
+   decltype((ref))     v16;  // const Foo&
    decltype((a > 0 ? a : b))              v;  // int&
    decltype((static_cast<Func&&>(f_ref))) f;  // Foo& (&)()
 
@@ -127,7 +131,7 @@
 1. 它们被定义时的类型
 2. 整体做为一个表达式的类型（一定是泛左值）
 
-前者是不关心表达式的，比如 ``decltype(Foo{1}.a)`` ，它只关心 ``a`` 被定义时的类型，
-而不关心整个表达式本身是一个 ``xvalue`` ，因而必然应该是一种右值引用类型。
+前者是不关心表达式的，比如 ``decltype(Foo{1}.a)`` ，它只关心 ``a`` 被定义时的类型：``int`` ；
+而不关心整个表达式本身是一个 ``xvalue`` ，因而表达式必然应该是一种右值引用类型：``int&&`` 。
 
 正是对于变量有这两种需求的存在，而其它表达式没有这样的问题，所以，才专门为变量定义了两种求类型的方法。而对于其它表达式则两种方式无差别。
