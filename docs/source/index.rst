@@ -9,6 +9,5 @@ Understanding Modern C++
 
    rvalue-ref
    value-category
-
-
+   decltype
 
