@@ -90,7 +90,7 @@
    auto* p3 = foo;  // Error: foo is not a pointer
 
 
-普世引用
+通用引用
 ---------------
 
 更为特殊的是 ``auto&& v = expr`` 的表达式。这并不必然导致 ``v`` 是一个右值引用。而是取决于 ``expr`` 的类别。
@@ -99,8 +99,11 @@
 - 如果 ``expr`` 是一个 **右值** 表达式（参见 :ref:`prvalue_material`），那么 ``v`` 将会是右值引用类型。
 
 .. code-block:: c++
+   :linenos:
 
    Foo foo{1};
+   Foo&   ref = foo;
+   Foo&& rref = Foo{2};
    Foo&& getRref();
    Foo& getRef();
    Foo getFoo();
@@ -110,8 +113,13 @@
    auto&& v3 = getRref();      // v3 type: Foo&&
    auto&& v4 = getRef();       // v4 type: Foo&
    auto&& v5 = getFoo();       // v5 type: Foo&&
+   auto&& v6 = ref;            // v6 type: Foo&
+   atuo&& v7 = rref;           // v7 type: Foo&&
 
-正是因为这样的写法，允许等号右侧是任意合法的表达式，而等号左侧总是可以根据表达式类别，推演出合适的引用类型。所以这种写法被称做 **普世引用** 。
+正是因为这样的写法，允许等号右侧是任意合法的表达式，而等号左侧总是可以根据表达式类别，推演出合适的引用类型。所以这种写法被称做 **通用引用** 。
+
+其中，我们可以清晰的看出，虽然 ``ref`` 和 ``rref`` 分别被定义为 **左值引用** 和 **右值引用** ，但它们做为左值来讲，是等价的。都是左值引用。
+具体可参考 :ref:`右值引用变量 <rvalue-ref-var>` 。
 
 初始化列表
 -------------
