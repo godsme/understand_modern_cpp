@@ -8,7 +8,7 @@ Understanding Modern C++
    :caption: 目录
 
    rvalue-ref
-   value-category
+   Value-object
    decltype
    auto
 
