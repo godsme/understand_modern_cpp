@@ -227,3 +227,10 @@
    template <typename T>
    auto f(T a, auto b, T c, auto d); // a, c 必须同一类型，b, d 各自有各自类型
 
+其等价于：
+
+.. code-block:: c++
+
+   template <typename T, typename T1, typename T2>
+   auto f(T a, T1 b, T c, T2 d);
+
