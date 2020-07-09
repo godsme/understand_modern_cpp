@@ -378,16 +378,16 @@ List
 
 .. code-block:: agda
 
-   Optional :: ( PRED : Set ) -> size_t -> Set
-   Optional PRED 1    = struct { ... }
-   Optional PRED SIZE = struct { ... }
+   Optional           :: ( PRED : Set ) -> size_t -> Set
+   Optional PRED 1    = struct { ... } // 2nd struct def
+   Optional PRED SIZE = struct { ... } // 1st struct def
 
 同样，像任何函数调用一样，不同的参数模式，会匹配到不同的版本，因而估值也会得到不同的结果类型。有趣的是，``C++`` 规范规定了，当对
 类模版进行匹配时，的确是将其转化为虚构的函数，然后根据函数的重载规则来进行匹配。
 
 当然，对于这个问题，``C++`` 有更简单的实现方式来解决：使用继承，而不是包含。比如：
 
-... code-block:: c++
+.. code-block:: c++
 
    template <template PRED>
    struct Optional : private PRED {
@@ -400,10 +400,10 @@ List
 但这并不是故事的结束，在这个例子中，我们的的模版参数是一个类，即仿函数。但可以做为谓词的不仅仅是仿函数，还可以是真正的函数，以及 ``lambda`` 。
 我们如何让用户用同一个模版名字就可以同时允许用户使用仿函数，函数和 ``lambda`` ，就像这样：
 
-... code-block:: c++
+.. code-block:: c++
 
    struct Pred {
-     auto operator()() -> bool { return true; }
+     auto operator()() const -> bool { return true; }
    };
 
    auto func() -> bool { return true; }
@@ -416,7 +416,7 @@ List
 很不幸，由于仿函数是 **类型** ，而 普通函数和 ``lambda`` 是 **值** 。这属于完全不同的集合。而C++ 即不允许 **类模版** 在特化时使用不同
 类别的参数，也不允许有两个类模版的 **主模版** (primary template) 同名。因而，针对这两种情况，我们只能定义两个不同名的模版类：
 
-... code-block:: c++
+.. code-block:: c++
 
    template <template PRED>
    struct OptionalForClass : private PRED {
@@ -613,5 +613,6 @@ TypeList
      typename ... Ts>
    using Elem_t = Drop_tt<N, Head, Ts...>;
 
-我们传入的 ``RESULT`` 函数就是 ``Head`` ，它拿到了一个 ``TypeList`` 之后，只取出第一个，即 ``H`` ，而把其余的全部都丢弃掉。而这正是如果利用这种回调机制操作类型的一个示例。
+我们传入的 ``RESULT`` 函数就是 ``Head`` ，它拿到了一个 ``TypeList`` 之后，只取出第一个，即 ``H`` ，而把其余的全部都丢弃掉。
+而这正是如果利用这种回调机制操作类型的一个示例。
 
