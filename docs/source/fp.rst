@@ -106,7 +106,7 @@ C++编译时元编程（一）
 
 .. code-block:: agda
 
-  Class   :: {T : Set} -> T -> int -> Set
+  Class     :: {T : Set} -> T -> int -> Set
   Class T I = struct { using type = T; }
 
 即, 模版名字是函数名，其有两个参数，其中 ``T`` 通过花括号里 ``{T : Set} 说明 ``T`` 是一个类型。其参数为 ``T`` 和 ``int``
