@@ -11,6 +11,9 @@ C++编译时元编程（一）
 而 ``Agda`` 的类型系统高了一个层次，在计算层面，数值和类型的边界被消除，拥有同等的计算能力。因而，本文主要通过 ``Agda`` 来做为引导，
 来理解 ``C++`` 编译时元编程的思想。
 
+List
+----------------
+
 我们先通过一段 ``Agda`` 代码来熟悉其语法和语意：
 
 .. code-block:: agda
@@ -105,7 +108,7 @@ C++编译时元编程（一）
 
 .. code-block:: agda
 
-  Class     :: {T : Set} -> T -> int -> Set
+  Class     :: (T : Set) -> int -> Set
   Class T I = struct { using type = T; }
 
 即, 模版名字是函数名，其有两个参数，其中 ``T`` 通过花括号里 ``{T : Set}`` 说明 ``T`` 是一个类型。其参数为 ``T`` 和 ``int``
@@ -115,7 +118,7 @@ C++编译时元编程（一）
 
 .. code-block:: agda
 
-  List     :: {T : Set} -> T -> size_t -> Set
+  List     :: (T : Set) -> size_t -> Set
   List T N = struct { const T head; const List<T, N-1> tail; }
   List T 0 = struct { }
 
@@ -316,6 +319,9 @@ C++编译时元编程（一）
    constexpr auto result1 = nil + makeList<1, 2, 3>;
    constexpr auto result2 = makeList<'a', 'b', 'c'> + makeList<'d','e'>;
 
+本文中 ``List`` 的例子，展示了在 ``C++`` 编译时元编程时，和函数式编程完全一样的思路。当然，你永远不会在现实项目中
+使用 ``List`` 这样低效的结构。有很多支持常量计算的数据结构才是你真正应该选择的。
+
 .. Important::
 
    - ``C++`` 编译时元编程都是常量语意；
@@ -324,6 +330,288 @@ C++编译时元编程（一）
    - **模式匹配** ，**递归** ，是函数式编程处理条件选择和循环问题的典型手段；同样也是 ``C++`` 编译时计算的主要手段。
 
 
-之前 ``List`` 的例子，展示了在 ``C++`` 编译时元编程时，和函数式编程完全一样的思路。当然，你永远不会在现实项目中
-使用 ``List`` 这样低效的结构。有很多支持常量计算的数据结构才是你真正应该选择的。
+类型操作模式
+---------------------
+
+之前的 ``List`` 中，我们已经简单展示了，类模版本身也是一个生成类型的函数，因而也允许通过不同的参数模式选择不同的类型。我们再来看一个
+来自于真实项目中的例子。
+
+有这样一个模版：
+
+.. code-block:: c++
+
+   template <IsPredicate PRED>
+   struct Optional {
+      auto isTrue() const -> bool { return pred(); }
+      PRED   pred;
+      // ...
+   };
+
+其中 ``PRED`` 是一个谓词，即 **仿函数** 。这个谓词，先实例化成了成员变量被保存了下来，等到随后需要的时候会被调用。
+
+但这中间的麻烦是，谓词的实现，经常是没有任何数据成员的，所以 ``sizeof(PRED) == 1`` ，这是 ``C++`` 规定的一个空对象的尺寸。
+毕竟每个对象都需要有自己独一无二的地址，如果大小为 0，就可能会和别的对象地址重叠。
+
+而空对象一旦变成一个类的数据成员，基于对齐的原因，其最终所占空间很可能比原来要大。比如，如果这个类中只有这一个数据成员，
+那么在 64 位系统上，因为对齐，最后就会有 8 个字节的开销。
+
+为了避免这种不必要的空间消耗，我们可以在编译时做一个优化，如果发现模版参数传进来的是一个空对象类型，就不做保存，而是使用时临时创建。
+
+所以，之前的定义的变成了如下的样子：
+
+.. code-block:: c++
+
+   template <template PRED, size_t SIZE = sizeof(PRED)>
+   struct Optional {
+      auto isTrue() const -> bool { return pred(); }
+      PRED   pred;
+      // ...
+   };
+
+   template <template PRED>
+   struct Optional<PRED, 1> {
+      auto isTrue() const -> bool { return PRED{}(); }
+      // ...
+   };
+
+正如我们之前所讨论的是，用 ``agda`` 伪代码表达的语意如下：
+
+.. code-block:: agda
+
+   Optional :: ( PRED : Set ) -> size_t -> Set
+   Optional PRED 1    = struct { ... }
+   Optional PRED SIZE = struct { ... }
+
+同样，像任何函数调用一样，不同的参数模式，会匹配到不同的版本，因而估值也会得到不同的结果类型。有趣的是，``C++`` 规范规定了，当对
+类模版进行匹配时，的确是将其转化为虚构的函数，然后根据函数的重载规则来进行匹配。
+
+当然，对于这个问题，``C++`` 有更简单的实现方式来解决：使用继承，而不是包含。比如：
+
+... code-block:: c++
+
+   template <template PRED>
+   struct Optional : private PRED {
+      auto isTrue() const -> bool { return PRED::operator()(); }
+      // ...
+   };
+
+因为 ``C++`` 继承语意保证了，如果父类是一个空对象，则其尺寸为 ``0`` 。
+
+但这并不是故事的结束，在这个例子中，我们的的模版参数是一个类，即仿函数。但可以做为谓词的不仅仅是仿函数，还可以是真正的函数，以及 ``lambda`` 。
+我们如何让用户用同一个模版名字就可以同时允许用户使用仿函数，函数和 ``lambda`` ，就像这样：
+
+... code-block:: c++
+
+   struct Pred {
+     auto operator()() -> bool { return true; }
+   };
+
+   auto func() -> bool { return true; }
+   auto lambda = [] { return true; }
+
+   Optional<Pred>;
+   Optional<func>;
+   Optional<lambda>;
+
+很不幸，由于仿函数是 **类型** ，而 普通函数和 ``lambda`` 是 **值** 。这属于完全不同的集合。而C++ 即不允许 **类模版** 在特化时使用不同
+类别的参数，也不允许有两个类模版的 **主模版** (primary template) 同名。因而，针对这两种情况，我们只能定义两个不同名的模版类：
+
+... code-block:: c++
+
+   template <template PRED>
+   struct OptionalForClass : private PRED {
+      // ...
+   };
+
+   using Func = auto () -> bool;
+
+   template <Func F>
+   struct OptionalForFunction {
+      // ...
+   };
+
+这样用户就不得不在不同情况下，明确用不同的名字的模版来实力化。这就给用户带来了不便。究竟有没有一种方法，可以让用户用同一个名字，
+或者同一个表达式就能在不知情的情况下，自动选择匹配的情况？
+
+而高度灵活的函数模版这时候成了救世主。因为函数的重载非常灵活：两个同名函数可以除了名字一样，其它都不一样。比如，参数个数，参数类型。如果是
+模版的话，模版的参数列表也可以完全不同。所以，我们可以定义两个同名函数：
+
+.. code-block:: c++
+
+   template <template PRED>
+   auto DeduceOptionalType() -> OptionalForClass<PRED>;
+
+   template <Func F>
+   auto DeduceOptionalType() -> OptionalForFunction<F>;
+
+然后，用户就可以使用如下统一的表达式来应对两种不同情况：
+
+.. code-block:: c++
+
+   decltype(DeduceOptionalType<Pred>())   a;
+   decltype(DeduceOptionalType<func>())   b;
+   decltype(DeduceOptionalType<lambda>()) c;
+
+当然，用一个宏，就可以将细节掩盖，让用户不要为之困扰：
+
+.. code-block:: c++
+
+   #define __optional(t) decltype(DeduceOptionalType<t>())
+
+   __optional(Pred)   a;
+   __optional(func)   b;
+   __optional(lambda) c;
+
+
+注意，那两个 ``DeduceOptionalType`` 函数，只需要声明，不需要实现。因为我们只关心通过 ``decltype`` 求出的返回值类型。
+对于这个目的，声明就足够了。
+
+现在，可以再去看看那两个函数声明，其表现形式，到意图，像不像前面提到的类模版 ``Deduction Guide`` ?
+
+SFINAE
+-----------------
+
+
+
+TypeList
+----------------------
+
+自从 ``C++11`` 引入了变参模版，极大的增强了范型编程的能力。这就意味着，我们在前面的 **数值** 列表，现在有了 **类型** 列表。因而，
+在实际项目中，我们也需要对类型列表有着和类型列表一样的操作。
+
+比如，我们想从一个 **类型列表　** 中取出第 ``N`` 个类型：
+
+.. code-block:: c++
+
+   template<size_t N, typename ... Ts>
+   struct Elem;
+
+   template<size_t N, typename H, typename ... Ts>
+   struct Elem<N, H, Ts...> {
+      using type = typename Elem<N-1, Ts...>::type;
+   };
+
+   template<typename H, typename ... Ts>
+   struct Elem<0, H, Ts...> {
+      using type = H;
+   };
+
+然后，我们再定义一个别名，让用户使用时可以有更简单的表达式：
+
+.. code-block:: c++
+
+   template<size_t N, typename ... Ts>
+   using Elem_t = typename Elem<N, Ts...>::type;
+
+如下的 ``Agda`` 伪代码，反映了上述同样的算法：
+
+.. code-block:: c++
+
+   Elem           :: size_t -> [Set] -> Set
+   Elem N (H::Ts) = Elem (N-1) Ts
+   Elem 0 (H::Ts) = H
+
+当然，代码中没有明确应对 ``N`` 值超过列表长度的情况，在 ``C++`` 下，这回导致一个编译错误。而这正是我们想要的结果。
+
+现在，我们再来实现另外一个经典函数：``drop`` ，即将列表中的前 ``N`` 个元素抛弃掉之后所得到的列表。
+
+这从算法上和 ``Elem`` 极为相似，唯一的差别是，``Elem`` 只要第 ``N`` (从 0 开始计数) 的元素，而 ``Drop`` 则是抛弃掉
+前 ``N`` 个元素（此时 ``N`` 不像 ``Elem`` 的 ``N`` 一样是索引，而是一个总数 ），得到一个列表。
+
+结果是单个类型，还是一个类型列表，对于设计的影响完全不同。因为 ``C++`` 类型却可以指代，因而，才可以通过：
+
+.. code-block:: c++
+
+  template<typename H, typename ... Ts>
+  struct Elem<0, H, Ts...> {
+      using type = H; // 这里通过type指代
+  };
+
+  template<size_t N, typename ... Ts>
+  using Elem_t = typename Elem<N, Ts...>::type; // 这里访问那个指代
+
+但不幸的是，``C++`` 类型列表无法指代。你无法通过诸如：``using type... = Ts...`` 的方式，
+来指代一个从模版参数传入的参数列表（或许 ``C++`` 在未来会解决这个问题？）。因而，也就无法返回一个结果列表。
+
+我们在之前已经看到，模版参数可以是 **类型** 或者 **数值** 。还有一种允许的模版参数类型就是 **模版** 。之前我们一直强调，
+模版的语意是求类型的 **函数** ；这就意味着，一个函数的参数也可以是函数，而能将函数当作参数，或者能返回函数的函数，被称作
+高阶函数。而允许高阶函数是函数做为一等公民的关键特征。与之对应，模版也是 ``C++`` 泛型编程的一等公民。
+
+所以，对于刚才的问题，我们可以传入一个函数（也就是模版），其参数是一个变参（即类型列表），这样我们就可以把计算出来的参数列表做为结果
+传递给那个模版，由那个模版根据调用者的需要，随意处理。下面是我们的实现：
+
+.. code-block:: c++
+
+   template<
+      size_t N,
+      template<typename ...> typename RESULT,
+      typename ... Ts>
+   struct Drop;
+
+   template<
+      size_t N,
+      template<typename ...> typename RESULT,
+      typename H,
+      typename ... Ts>
+   struct Drop<N, RESULT, H, Ts...> {
+      using type = typename Drop<N-1, RESULT, Ts...>::type;
+   };
+
+   template<
+      template<typename ...> typename RESULT,
+      typename H,
+      typename ... Ts>
+   struct Drop<0, RESULT, H, Ts...> {
+      using type = RESULT<H, Ts...>;
+   };
+
+   template<
+      template<typename ...> typename RESULT>
+   struct Drop<0, RESULT> {
+      using type = RESULT<>;
+   };
+
+其中，``RESULT`` 就是用户指定的回调模版，而将 ``TypeList`` 传递给它之后，它就被实例化为一个类型，从而就得到了指代能力。
+
+用 ``Agda`` 伪代码描述如下：
+
+.. code-block:: c++
+
+   Drop           :: size_t -> ([Set] -> Set) -> [Set] -> Set
+   Drop N RESULT (H::Ts) = Drop (N-1) RESULT Ts
+   Drop 0 RESULT (H::Ts) = RESULT H::Ts
+   Drop 0 RESULT []      = Result []
+
+当然，其实最后两种情况，从道理上是可以合并的，但是从 ``C++`` 模式匹配的角度，合并之后，``C++`` 无法判断两种情况那种更特别。
+只有将 ``H`` , ``Ts...`` 展开写， ``C++`` 才能对比它和前面那个模版的特化度。
+
+然后我们就可以定义 ``Drop_t`` 别名，以简化用户的表达式：
+
+.. code-block:: c++
+
+   template<
+     size_t N,
+     template<typename ...> typename RESULT,
+     typename ... Ts>
+   using Drop_t = typename details::Drop<N, RESULT, Ts...>::type;
+
+我们之前已经谈到， ``Elem`` 和 ``Drop`` 的算法完全一直，无非就是所要的结果不同。因而，我们可以废弃掉之前 ``Elem`` 的实现，
+复用 ``Drop`` 的实现，而复用的方式，是通过传入自己特定的 ``RESULT`` 函数。
+
+.. code-block:: c++
+
+   template<typename ... Ts>
+   struct Head;
+
+   template<typename H, typename ... Ts>
+   struct Head<H, Ts...> {
+      using type = H;
+   };
+
+   template<
+     size_t N,
+     typename ... Ts>
+   using Elem_t = Drop_tt<N, Head, Ts...>;
+
+我们传入的 ``RESULT`` 函数就是 ``Head`` ，它拿到了一个 ``TypeList`` 之后，只取出第一个，即 ``H`` ，而把其余的全部都丢弃掉。而这正是如果利用这种回调机制操作类型的一个示例。
 
