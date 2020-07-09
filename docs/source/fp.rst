@@ -479,6 +479,9 @@ TypeList
 自从 ``C++11`` 引入了变参模版，极大的增强了范型编程的能力。这就意味着，我们在前面的 **数值** 列表，现在有了 **类型** 列表。因而，
 在实际项目中，我们也需要对类型列表有着和类型列表一样的操作。
 
+Elem
++++++++++++++++++++++
+
 比如，我们想从一个 **类型列表　** 中取出第 ``N`` 个类型：
 
 .. code-block:: c++
@@ -512,6 +515,9 @@ TypeList
    Elem 0 (H::Ts) = H
 
 当然，代码中没有明确应对 ``N`` 值超过列表长度的情况，在 ``C++`` 下，这回导致一个编译错误。而这正是我们想要的结果。
+
+Drop
++++++++++++++++++++++
 
 现在，我们再来实现另外一个经典函数：``drop`` ，即将列表中的前 ``N`` 个元素抛弃掉之后所得到的列表。
 
@@ -615,4 +621,134 @@ TypeList
 
 我们传入的 ``RESULT`` 函数就是 ``Head`` ，它拿到了一个 ``TypeList`` 之后，只取出第一个，即 ``H`` ，而把其余的全部都丢弃掉。
 而这正是如果利用这种回调机制操作类型的一个示例。
+
+Transform
++++++++++++++++++++++
+
+现在我们再实现另外一个非常经典的函数 ``map`` ，由于在 ``C++`` 中， ``map`` 在标准库里代表一个 ``k/v`` 容器，而将 ``fp`` 领域
+里的 ``map`` 称做 ``transform`` ，我们也继续遵守这个习俗。
+
+``Transform`` 操作是将一组类型，通过一个转化函数，转化成另外一组相同数量的其它类型。用 ``Agda`` 伪代码描述如下：
+
+.. code-block:: c++
+
+   Transform  :: [Set] -> (Set -> Set) -> [Set]
+
+
+注意，这里面有两个 ``TypeList`` ，一个是输入，一个是输出。而两者的内容经过 ``(Set -> Set)`` 转换后，很可能是完全不同的。
+
+虽然之前的 ``Drop`` 也是输入一个 ``TypeList`` ，输出一个 ``TypeList`` ，但后者只是前者的一部分。
+因而事实上只需要在一个 ``TypeList`` 上操作即可。
+
+对于 ``Transform`` 算法来说，它一边从输入列表中读取单个元素，将其转化后，不断追加新生成的输出列表上。另外，由于类型列表无法指代，
+所以，不可能使用诸如下面的算法：
+
+.. code-block:: agda
+
+   {- 后面的 map f xs 有一个返回输出，但在 `C++`` 下无法通过这种方式直接输出一个列表 -}
+   map f (x :: xs) = f x :: map f xs
+
+因而，我们必须将输出的列表随时保存在模版参数上，然后将最终结果想 ``Drop`` 算法一样，传递用户的回调。
+
+同时，``C++`` 又有另外一个约束，即类模版的变参列表只允许有一个，并且必须放在最后。（不知道未来 ``C++`` 是否可以放开这样的限制，
+如果两个类型列表中，存在一个非类型参数，其实是可以区分的）。所以这个宝贵的变参列表位置一旦留给输出，那么输入列表该放在何处？
+
+答案是，将其保存在另外一个模版里，其操作方式，应该和我们最初定义 ``List`` 非常类似：
+
+.. code-block:: c++
+
+   template<typename ... Ts>
+   struct TypeList {};
+
+   template<typename H, typename ... Ts>
+   struct TypeList<H, Ts...> {
+      using Head = H;
+      using Tail = TypeList<Ts...>;
+   };
+
+这个定义精准的反映了一个 ``List`` 的本质，这是一个递归结构。因而，你总是可以通过如下方式读取任何元素：
+
+.. code-block:: c++
+
+   using list = TypeList<int, double, char>;
+
+   list::head               // int
+   list::tail::head         // double
+   list::tail::tail::head   // char
+
+所以，我之前其实撒谎了。我一直在宣称 ``C++`` 的 ``TypeList`` 无法指代。其实指的是 ``Ts...`` 形式的列表无法指代。但一旦
+将其保存在刚刚定义的 ``TypeList`` 里，它就可以指代了。 但是以 ``TypeList<Ts...>`` 的方式给用户，用户将再也不能以 ``Ts...`` 的方式使用，
+而那是很多变参模版的基本要求。但用户拿到 ``Ts...`` 之后，如果的确需要 ``TypeList`` 结构，却可以自由的从 ``Ts...`` 转化
+为 ``TypeList<Ts...>`` 。因而， ``Ts...`` 方式才真正保证了用户的最大自由度。我们不应该破坏这一点。
+
+而 ``TypeList<Ts...>`` 当作我们算法的内部结构，自然是没有任何问题的。下面就是 ``Transform`` 的实现：
+
+.. code-block:: c++
+
+   template<
+      typename IN,
+      template<typename> typename F,
+      template<typename ...> typename RESULT,
+      typename = void,
+      typename ... OUT>
+   struct Transform {
+      using type = RESULT<OUT...>; // 将最终结果输出给 RESULT
+   };
+
+   template<
+      typename IN,
+      template<typename> typename F,
+      template<typename ...> typename RESULT,
+      typename ... OUT>
+   struct Transform<IN, F, RESULT, std::void_t<typename IN::Head>, OUT...> {
+      using type =
+        typename Transform<
+           typename IN::Tail,
+           F,
+           RESULT,
+           void,
+           __TYPE_LIST_APPEND(OUT..., typename F<typename IN::Head>::type)
+        >::type;
+   };
+
+代码看起来很长，但只是只是参数列表很长，真正的有逻辑的地方只有三处：
+
+1. 第一个模版是整个 ``Transform`` 结束时的情况。所以将 ``OUT...`` ，即转换最终得到的输出列表传递给用户的回调模版。
+2. ``std::void_t<typename IN::Head>`` 是一个 ``SFINAE`` 条件，即要求输入列表中还有 ``Head`` ，如果还存在，
+   则说明 ``IN`` 列表还没有遍历结束；因而，
+3. ``OUT..., typename F<typename IN::Head>::type`` 将通过 ``F`` 转换后的类型，追加到输出列表 ``OUT`` 后面。
+   注意，其中的宏 ``TYPE_LIST_APPEND`` 什么都没做，只是为了表明代码意图。
+
+用伪代码表现即为：
+
+.. code-block:: haskell
+
+   Transform                     :: [Set] -> (Set -> Set) -> (Set -> Set) -> [Set]
+   Transform []     F RESULT OUT = RESULT OUT
+   Transform (x:xs) F RESULT OUT = Transform xs F RESULT (xs ++ [F x])
+
+当然这只是内部实现，给用户提供的真正接口是：
+
+.. code-block:: c++
+
+   template<
+     template<typename>     typename F,
+     template<typename ...> typename RESULT,
+     typename                    ... IN>
+   using Transform_t =
+     typename details::Transform<
+       TypeList < IN...>,          // 将 IN... 保存到 TypeList
+       F,
+       RESULT,
+       void                        // 为了SFINAE条件判断
+       __EMPTY_OUTPUT_TYPE_LIST___ // 输出列表最初为空
+     >::type;
+
+所以，用户真正提供的参数只有三个， ``F`` 转化函数， ``IN`` 输入列表，以及用来回传最终结果回调模版 ``RESULT`` 。 而
+宏 ``__EMPTY_OUTPUT_TYPE_LIST___`` 背后什么都没有，正如一个 ``Ts...`` 形式的列表如果为空是，就什么都没有一样，
+这样在阅读代码时，很容易忽略这里还有一个空参数。而通过 ``__EMPTY_OUTPUT_TYPE_LIST___`` 则可以起到提示的作用。
+
+Split
++++++++++++++++++++++
+
 
