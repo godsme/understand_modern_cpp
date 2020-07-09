@@ -193,14 +193,10 @@ C++编译时元编程（一）
 .. code-block:: C++
 
   template<auto H, auto ... RESTs>
-  constexpr auto makeList                   = makeList<H, RESTs...>;
+  constexpr auto makeList                   = List{H};
 
   template<auto H, auto H1, auto ... RESTs>
   constexpr auto makeList<H, H1, RESTs...>  = H >>= makeList<H1, RESTs...>;
-
-  template<auto H>
-  constexpr auto makeList<H>                = List{H};
-
 
 这是一个完全递归的计算，典型的函数式计算方式。另外，``MakeList`` 从参数上约束了必须至少有一个元素，否则在空列表的情况下，
 其类型由于缺乏上下文而无法推导。
