@@ -126,7 +126,7 @@ C++编译时元编程（一）
 会错过 ``C++`` 最为强大，也最为精彩的能力。
 
 
-我们接着实现上面的 ``List`` 。为了让用户可以不要在每次使用 ``List`` 时都要指明类型，我们定义两个类型推演指导，
+我们接着实现上面的 ``List`` 。为了让用户可以不要在每次使用 ``List`` 时都要指明类型，我们定义两个 ``Deduction Guide`` ，
 而第 2 个正是 ``Agda`` 例子中的第 2 个构造。而另外一个构造，则是对只有一个元素情况下的简便写法。
 至于空列表构造，``C++`` 已经帮我们生成了默认构造，我们无须再写。
 
@@ -138,9 +138,42 @@ C++编译时元编程（一）
    template<typename T, size_t N>
    List(T, List<T, N>) -> List<T, N+1>;
 
-然后我们就可以定义 `List` 常量了：
+这里如果不使用 ``Deduction Guide`` ，换成构造函数，则是如下写法：
 
-.. code-block:: C++
+.. code-block:: c++
+
+   template<typename T, size_t N = 0>
+   struct List {
+     List(T head) : head{head}, tail{} {}
+     List(T head, List<T, N-1> tail) : head{head}, tail{tail} {}
+
+     const T head;
+     const List<T, N-1> tail;
+   };
+
+很明显，这种写法要啰嗦的多。毕竟都是非常平凡的构造，写起来很无聊。另外，最重要的是，这样的写法，``C++`` 无法自动推演
+出来``N`` 的值。因为构造函数的参数 ``List<T, N-1>`` 里，``N`` 处于一个计算表达式里。这在 ``C++`` 的定义中属于
+不可推演上下文。
+
+13.10.2.5 [temp.deduct.type]:
+  A ``non-type template argument`` or an array bound in which a ``subexpression`` references a template
+  parameter.
+
+另外，``Deduction Guide`` 本身并不是构造函数。此处之所以通过 ``Deduction Guide`` 就可以构造，是因为 ``List`` 类型本身
+是一个 **聚合** (Aggregate) ，聚合本身就可以直接构造其成员。比如下面的聚合以及初始化：
+
+.. code-block::
+
+   struct Foo { int a; int b; };
+
+   Foo foo1 = { 1, 2 }; // a=1, b=2
+   Foo foo2 = { 1 };    // a=1, b=0
+
+所以，``Deduction Guide`` 并没有创建任何构造函数，而只是根据 ``Deduction Guide`` 的指导，在调用聚合的初始化而已。
+
+下面我们再定义与空列表有关的类型和常量：
+
+.. code-block:: c++
 
    template<typename T>
    using Nil_t = List<T, 0>;
@@ -148,10 +181,14 @@ C++编译时元编程（一）
    template<typename T>
    constexpr Nil_t<T> Nil{};
 
+有了 ``Deduction Guide`` 的指导， 和 ``Nil`` 常量的辅助，我们就可以定义 `List` 常量了：
+
+.. code-block:: C++
+
    constexpr auto emtpy = Nil<int>;                   // int 型空列表，由于类型无法推演，必须明确指明
    constexpr auto list1 = List{1, List{2, List{3}}};  // 构造 1::2::3::Nil
 
-从中，你可以清晰的看出函数式语言中的 ``List`` 就是这样的递归构造。``agda`` 在构造一个 ``list`` 时，则是如下语法：
+从中，你可以清晰的看出函数式语言中的 ``List`` 就是这样的递归构造。``Agda`` 在构造一个 ``list`` 时，则是如下语法：
 
 .. code-block:: agda
 
@@ -285,4 +322,8 @@ C++编译时元编程（一）
    - **类型** 与 **值** ，在 ``C++`` 编译时元编程的世界里，从概念上没有本质区别。``typename`` 是类型的 ``Set`` 。
    - ``C++`` 的类模版也是函数语意；其求值结果的类型是 ``Set`` ，即类型；
    - **模式匹配** ，**递归** ，是函数式编程处理条件选择和循环问题的典型手段；同样也是 ``C++`` 编译时计算的主要手段。
+
+
+之前 ``List`` 的例子，展示了在 ``C++`` 编译时元编程时，和函数式编程完全一样的思路。当然，你永远不会在现实项目中
+使用 ``List`` 这样低效的结构。有很多支持常量计算的数据结构才是你真正应该选择的。
 
