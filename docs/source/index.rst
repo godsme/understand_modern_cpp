@@ -11,4 +11,5 @@ Understanding Modern C++
    value-object
    decltype
    auto
+   fp
 
