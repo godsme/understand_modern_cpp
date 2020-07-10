@@ -1,4 +1,4 @@
-C++编译时元编程
+C++编译时元编程（一）
 ================================
 
 ``C++`` 编译时元编程，是对 **类型** 和 **值** 的计算。类型自不必说，不存在 ``mutable`` 的可能性；而数值，``C++`` 也规定了
@@ -654,7 +654,7 @@ Drop
      size_t                          N,
      template<typename ...> typename RESULT,
      typename                    ... Ts>
-   using Drop_t = typename details::Drop<N, RESULT, Ts...>::type;
+   using Drop_t = typename Drop<N, RESULT, Ts...>::type;
 
 我们之前已经谈到， ``Elem`` 和 ``Drop`` 的算法完全一直，无非就是所要的结果不同。因而，我们可以废弃掉之前 ``Elem`` 的实现，
 复用 ``Drop`` 的实现，而复用的方式，是通过传入自己特定的 ``RESULT`` 函数。
@@ -791,7 +791,7 @@ Transform
      template<typename ...> typename RESULT,
      typename                    ... IN>
    using Transform_t =
-     typename details::Transform<
+     typename Transform<
        TypeList < IN...>,          // 将 IN... 保存到 TypeList
        F,
        RESULT,
@@ -889,7 +889,7 @@ Split
       template<typename ...> typename RESULT_2,
       typename ... IN>
    using Split_t =
-      typename details::Split<
+      typename Split<
          N,
          GenericTypeList<RESULT_2, IN...>, // 将后半部分的回调，传递给输入
          RESULT_1                          // 前半部分的回调
