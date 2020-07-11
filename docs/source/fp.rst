@@ -1034,12 +1034,16 @@ Fold
 
 当然，对于 ``+`` 这种性质的计算，你也可以用从右边开始的 ``fold`` 。
 
+.. code-block:: c++
+
    template <typename ... Ts>
    struct Foo {
       enum { Sum_Of_Size = (sizeof(Ts) + ... + 0) };
    };
 
 如果你可以确保，输入的类型列表非空，你甚至不用写初识值，因而更加简洁：
+
+.. code-block:: c++
 
    template <typename ... Ts>
    struct Foo {
