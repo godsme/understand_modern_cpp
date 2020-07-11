@@ -1391,6 +1391,8 @@ Flatten
 
 这样我们就我们就可以直接调用 ``FoldL_Init_t`` :
 
+.. code-block:: c++
+
    using Acc = FoldL_Init_t<FlattenAcc_t, Accumulator<>, Ts...>;
 
 
