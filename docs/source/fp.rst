@@ -91,7 +91,7 @@ List
    template <> constexpr auto fib<1> = 1;
    template <> constexpr auto fib<0> = 0;
 
-其中 ``std::integral`` 是 ``C++20`` 引入的 `Concepts` ，它比 ``Haskell`` 的 ``TypeClass`` 更为强大。但在本例中，起到的作用
+其中 ``std::integral`` 是 ``C++20`` 引入的 ``concept`` ，它比 ``Haskell`` 的 ``TypeClass`` 更为强大。但在本例中，起到的作用
 一样。
 
 但这个例子只是通过模式匹配在做 **数值** 演算。而对于 ``List`` 的例子，我们则是通过模式匹配进行类型选择。从本质上理解，如果模糊
