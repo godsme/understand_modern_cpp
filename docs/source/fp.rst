@@ -1264,4 +1264,19 @@ Fold
      , typename                           ... Ts>
    using FoldL_Init_t = FoldL_t<OP, INIT, Ts...>;
 
+有了 ``Fold`` ，我们就可以进行这样的计算：
 
+.. code-block:: c++
+
+   template<typename T1, typename T2>
+   struct Combine {
+      struct type : private T1, private T2 {
+        auto createAction(ID id) -> Action* {
+           auto action = T1::createAction(id);
+           return action == nullptr ? T2::createAction(tid) : action;
+      };
+   };
+
+   using type = FoldL_t<Combine, Ts...>;
+
+从而将一些列的 ``ActionCreator`` 折叠成一个 ``ActionCreator`` 。
