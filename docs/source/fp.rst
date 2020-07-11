@@ -1032,6 +1032,9 @@ Fold
 
 这里用到的是，有初识值 ``0`` 的从左边开始的，操作为 ``+`` 的 ``fold`` 计算。其结果是列表中所有类型的大小的总和。
 
+从这个简单的例子可以看出，``C++`` 的 ``fold expression`` 不只在做 ``fold`` ，还先做了 ``map`` ，本例中即 ``sizeof`` 。
+所以，其实际上是 ``map-reduce`` ：先 ``map`` ，然后将 ``map`` 后的结果进行 ``fold`` 。
+
 当然，对于 ``+`` 这种性质的计算，你也可以用从右边开始的 ``fold`` 。
 
 .. code-block:: c++
@@ -1134,9 +1137,10 @@ Fold
      return (np ->* ... ->* paths);
    }
 
+
 或者：
 
-.. code-block:: c++
+.. code-block:: C++
 
    template<typename T>
    class AddSpace {
@@ -1160,7 +1164,7 @@ Fold
 
 所以，我们必须得自己实现一个：
 
-.. code-block:: c++
+.. code-block:: C++
 
    template
      < template<typename, typename> typename OP
