@@ -1675,6 +1675,82 @@ ____________
                    , FoldL<CombineToOne>
                    >::output;
 
+延迟估值
+-------------------
+
+``C++`` 的泛型天然就是延迟估值的，因而你可以构造一个无穷列表：
+
+.. code-block:: c++
+
+   template <typename T, T N, T STEP = 1>
+   struct InfiniteValueList {
+      constexpr static T Head = N;
+      using Tail = InfiniteValueList<T, N + STEP, STEP>;
+   };
+
+   template <auto V>
+   struct RepeatValueList {
+      constexpr static auto Head = V;
+      using Tail = RepeatValueList<V>;
+   };
+
+你不用担心这样的结构定义会无穷递归下去而导致编译器崩溃。并且你可以安全的写如下算法的代码：
+
+.. code-block:: c++
+
+   Pipeline
+     < InfiniteValueList<int, 1, 2>
+     , Drop<2>
+     , Take<5>>
+     // 结果是 5, 7, 9, 11, 13
+
+   Pipeline
+     < TypeList<int, double, char>
+     , ZipWith<RepeatValueList<5>>>
+     // 结果是 [(int, 5), (double, 5), (char, 5)]
+
+Optional
+-------------------
+
+``Optional`` 是一个存在非常广泛的语意。比如，指针空与非空，非法值与合法值，存在与不存在 ... 等等；在 ``Haskell`` 语言里，
+这种概念被称做 ``Maybe`` 。
+
+而在类型的世界里，则可以将 ``void`` 看作 ``None`` （或 ``Nothing`` )， ``void`` 和其它类型一样，本身也是一个类型，
+但其值域为空。也就是说，你无法用它实例化任何数据。
+
+所以，在对类型进行，``transform`` , ``filter`` , 或者 ``fold`` 操作时，你总是可以用 ``void`` 当作 ``None`` 语意。比如：
+
+.. code-block:: c++
+
+   template <typename T, typename = void>
+   struct ActionTrait {
+      using type = void;
+   };
+
+   template <typename T>
+   struct ActionTrait<T, std::enabled_if_t<std::is_base_class_v<Action, T>>> {
+      using type = T;
+   };
+
+其语意是，一个类型如果是 ``Action`` 的子类，返回的则是 ``Maybe<T>`` ，否则返回 ``Nothing`` 。
+
+
+.. code-block:: c++
+
+   template <typename ... Ts>
+   struct Bar {
+      // Ts... 里，全是Action的子类
+   };
+
+   using Result = typename Pipeline
+                   < TypeList<Ts...>
+                   , Transform<ActionTrait>
+                   , Filter<Maybe>
+                   >::output::template output<Bar>;
+
+甚至，你可以将对于 ``void`` 的过滤操作自动内嵌到操作中，比如， ``Transform`` 可以提供一个版本，
+自动抛弃掉结果为 ``void`` 的类型；或者，在 ``Fold`` 时，自动跳过是 ``void`` 的类型。但这都是优化的事情，即便不提供，
+由于有了 ``Filter`` ，也都可以完成计算。
 
 .. important::
 
