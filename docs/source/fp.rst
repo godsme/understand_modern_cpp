@@ -1627,10 +1627,53 @@ ____________
 
 .. code-block:: c++
 
-   using Result = Pipeline<TypeList<Ts...>,
-                  Take<5>,
-                  Transform<AddWrapper>,
-                  FoldL<FinalClass>>::output;
+   using Result = typename Pipeline
+                   < TypeList<Ts...>
+                   , Filter<ActionTrait>
+                   , Transform<AddWrapper>
+                   , FoldL<CombineToOne>
+                   >::output;
+
+如果，最终的结果是一个 ``TypeList`` 而不是单个类型，你可以通过 ``TypeList`` 的 ``output`` 模版，以回调的方式，将
+一个 ``Ts...`` 传递个你的回调模版。
+
+我们前面提到的另外一个问题还没有解决：如果管道中的某个操作输出的是单个类型，而不是一个 ``TypeList`` ，
+但后续其它 ``OP`` 毫无疑问需要的是一个 ``TypeList`` ，怎么办？
+
+答案是，在两个管道衔接处，增加一个检查，如果返现是单个类型 ``T`` ， 就将其转化为 ``TypeList<T>`` ，即将 ``x`` 转
+化为 ``[x]`` 。
+
+.. code-block:: c++
+
+   template<typename T, typename = void>
+   struct TypeListTrait {
+      using type = TypeList<T>;
+   };
+
+   template<typename T>
+   struct TypeListTrait<T, std::enable_if_t<std::is_base_of_v<TypeListSignature, T>>> {
+      using type = T;
+   };
+
+   template<typename INPUT>
+   class Result {
+      using output1 = typename TypeListTrait<typename OP::template output<INPUT>>::type;
+   public:
+      using output  = typename COMPOSED_OP::template Result<output1>::output;
+   };
+
+
+然后，我们就可以在中间使用 ``Elem`` 了（当然也可以使用其它只输出单个类型的 ``OP`` ）：
+
+.. code-block:: c++
+
+   using Result = typename Pipeline
+                   < TypeList<Ts...>
+                   , Filter<ActionTrait>
+                   , Elem<0>
+                   , Transform<AddWrapper>
+                   , FoldL<CombineToOne>
+                   >::output;
 
 
 .. important::
