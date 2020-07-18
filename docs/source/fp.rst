@@ -1614,6 +1614,106 @@ Curry
 
 究其原因，是两种写法都没有解决关键的问题， 传入的 ``F`` 究竟有几个参数？
 
+在一个变参模版内部，计算一个变参包里的参数数量是非常简单的： ``sizeof...(Ts)`` 即可。 但是对于传入的、可以
+匹配 ``template <typename ...> typename F`` 的模版，其参数个数可以是任意数目，比如：
+
+.. code-block:: c++
+
+   template <typename T> struct C1;                                 // 1个参数
+   template <typename T1, typename T2> struct C2;                   // 2个参数
+   template <typename T1, typename ... Ts> struct C1s;              // 至少1个参数
+   template <typename T1, typename T2, typename ... Ts> struct C2s; // 至少2个参数
+   template <typename ... Ts> struct Cs;                            // 任意多个参数
+
+它们都可以匹配 ``F`` ； 并且没有任何直接的办法，站在 ``F`` 的角度求一个传入的模版的参数个数。
+
+或许第一个跳到你脑海里的方法是模版萃取：
+
+.. code-block:: c++
+
+   template<template<typename> typename>
+   struct TemplateTrait {
+      constexpr static size_t num = 1;
+   };
+
+   template<>
+   struct TemplateTrait<template<typename, typename > typename> {
+     constexpr static size_t num = 2;
+   }
+
+或者：
+
+.. code-block:: c++
+
+   template< template<typename> typename >
+   struct TemplateTrait {
+      constexpr static size_t num = 1;
+   };
+
+   template < template< typename, typename > typename C>
+   struct TemplateTrait {
+     constexpr static size_t num = 2;
+   }
+
+
+很不幸，``C++`` 规定，模版的 **模版参数** 不能用来做特化。而对于 **类模版** ，不同的模版头，不允许存在两个主模版。
+
+而高度灵活的函数模版这时候成了救世主。因为函数的重载非常灵活：两个同名函数可以除了名字一样，其它都不一样。
+比如，参数个数，参数类型。如果是模版的话，模版的参数列表也可以完全不同。所以，我们可以定义两个同名函数：
+
+.. code-block:: c++
+
+   template <template<typename> typename>
+   auto DeduceArgs() -> Value<1>;
+
+   template <template<typename, typename> typename>
+   auto DeduceArgs() -> Value<2>;
+
+然后，
+
+.. code-block:: c++
+
+   template <typename T> struct C1;                   // 1个参数
+   template <typename T1, typename T2> struct C2;     // 2个参数
+
+   decltype(DeduceArgs<C1>())    // Value<1>
+   decltype(DeduceArgs<C2>())    // Value<2>
+
+
+So far so good。但我们忘了一种重要的情况：变参。
+
+.. code-block:: c++
+
+   template <typename T1, typename ... Ts> struct C1s;              // 至少1个参数
+   template <typename ... Ts> struct Cs;                            // 任意多个参数
+
+   decltype(DeduceArgs<C1s>())    // 二意性
+   decltype(DeduceArgs<Cs>())     // 二意性
+
+正如我们之前所讨论的，这两个变参模版均可以匹配上面的两个 ``DeduceTemplate`` 函数。
+
+如何让函数模版能够在变参模版万能匹配的情况下，能够区分出定长参数和变参？
+
+下面出场的就是 ``C++`` 社区著名的惯用法 ： ``tag dispatch`` 。
+
+我们先定义两个 ``tag class`` ：
+
+.. code-block:: c++
+
+    struct variadic_tag {};
+    struct fixed_tag : variadic_tag {};
+
+你应该已经注意到，它们其中一个继承自另外一个。
+
+然后，我们再定义两个重载函数，来使用这两个 ``tag`` :
+
+.. code-block:: c++
+
+    template<template<typename...> typename F>
+    auto DeduceTemplateArgs(variadic_tag) -> Value<1000000000>; // big number, means variadic.
+
+    template<template<typename...> typename F>
+    auto DeduceTemplateArgs(fixed_tag)    -> decltype(DeduceArgs<F>());
 
 
 .. code-block:: c++
