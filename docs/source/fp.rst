@@ -330,149 +330,7 @@ List
    - **模式匹配** ，**递归** ，是函数式编程处理条件选择和循环问题的典型手段；同样也是 ``C++`` 编译时计算的主要手段。
 
 
-类型操作模式
----------------------
 
-之前的 ``List`` 中，我们已经简单展示了，类模版本身也是一个生成类型的函数，因而也允许通过不同的参数模式选择不同的类型。我们再来看一个
-来自于真实项目中的例子。
-
-有这样一个模版：
-
-.. code-block:: c++
-
-   template <IsPredicate PRED>
-   struct Optional {
-      auto isTrue() const -> bool { return pred(); }
-      PRED   pred;
-      // ...
-   };
-
-其中 ``PRED`` 是一个谓词，即 **仿函数** 。这个谓词，先实例化成了成员变量被保存了下来，等到随后需要的时候会被调用。
-
-但这中间的麻烦是，谓词的实现，经常是没有任何数据成员的，所以 ``sizeof(PRED) == 1`` ，这是 ``C++`` 规定的一个空对象的尺寸。
-毕竟每个对象都需要有自己独一无二的地址，如果大小为 0，就可能会和别的对象地址重叠。
-
-而空对象一旦变成一个类的数据成员，基于对齐的原因，其最终所占空间很可能比原来要大。比如，如果这个类中只有这一个数据成员，
-那么在 64 位系统上，因为对齐，最后就会有 8 个字节的开销。
-
-为了避免这种不必要的空间消耗，我们可以在编译时做一个优化，如果发现模版参数传进来的是一个空对象类型，就不做保存，而是使用时临时创建。
-
-所以，之前的定义的变成了如下的样子：
-
-.. code-block:: c++
-
-   template <template PRED, size_t SIZE = sizeof(PRED)>
-   struct Optional {
-      auto isTrue() const -> bool { return pred(); }
-      PRED   pred;
-      // ...
-   };
-
-   template <template PRED>
-   struct Optional<PRED, 1> {
-      auto isTrue() const -> bool { return PRED{}(); }
-      // ...
-   };
-
-正如我们之前所讨论的是，用 ``agda`` 伪代码表达的语意如下：
-
-.. code-block:: agda
-
-   Optional           : ( PRED : Set ) -> size_t -> Set
-   Optional PRED 1    = struct { ... } // 2nd struct def
-   Optional PRED SIZE = struct { ... } // 1st struct def
-
-同样，像任何函数调用一样，不同的参数模式，会匹配到不同的版本，因而估值也会得到不同的结果类型。有趣的是，``C++`` 规范规定了，当对
-类模版进行匹配时，的确是将其转化为虚构的函数，然后根据函数的重载规则来进行匹配。
-
-当然，对于这个问题，``C++`` 有更简单的实现方式来解决：使用继承，而不是包含。比如：
-
-.. code-block:: c++
-
-   template <template PRED>
-   struct Optional : private PRED {
-      auto isTrue() const -> bool { return PRED::operator()(); }
-      // ...
-   };
-
-因为 ``C++`` 继承语意保证了，如果父类是一个空对象，则其尺寸为 ``0`` 。
-
-但这并不是故事的结束，在这个例子中，我们的的模版参数是一个类，即仿函数。但可以做为谓词的不仅仅是仿函数，还可以是真正的函数，以及 ``lambda`` 。
-我们如何让用户用同一个模版名字就可以同时允许用户使用仿函数，函数和 ``lambda`` ，就像这样：
-
-.. code-block:: c++
-
-   struct Pred {
-     auto operator()() const -> bool { return true; }
-   };
-
-   auto func() -> bool { return true; }
-   auto lambda = [] { return true; }
-
-   Optional<Pred>;
-   Optional<func>;
-   Optional<lambda>;
-
-很不幸，由于仿函数是 **类型** ，而 普通函数和 ``lambda`` 是 **值** 。这属于完全不同的集合。而 ``C++`` 既不允许 **类模版** 在特化时使用不同
-类别的参数，也不允许有两个类模版的 **主模版** (primary template) 同名。因而，针对这两种情况，我们只能定义两个不同名的模版类：
-
-.. code-block:: c++
-
-   template <template PRED>
-   struct OptionalForClass : private PRED {
-      // ...
-   };
-
-   using Func = auto () -> bool;
-
-   template <Func F>
-   struct OptionalForFunction {
-      // ...
-   };
-
-这样用户就不得不在不同情况下，明确用不同的名字的模版来实力化。这就给用户带来了不便。究竟有没有一种方法，可以让用户用同一个名字，
-或者同一个表达式就能在不知情的情况下，自动选择匹配的情况？
-
-而高度灵活的函数模版这时候成了救世主。因为函数的重载非常灵活：两个同名函数可以除了名字一样，其它都不一样。
-比如，参数个数，参数类型。如果是模版的话，模版的参数列表也可以完全不同。所以，我们可以定义两个同名函数：
-
-.. code-block:: c++
-
-   template <template PRED>
-   auto DeduceOptionalType() -> OptionalForClass<PRED>;
-
-   template <Func F>
-   auto DeduceOptionalType() -> OptionalForFunction<F>;
-
-然后，用户就可以使用如下统一的表达式来应对两种不同情况：
-
-.. code-block:: c++
-
-   decltype(DeduceOptionalType<Pred>())   a;
-   decltype(DeduceOptionalType<func>())   b;
-   decltype(DeduceOptionalType<lambda>()) c;
-
-当然，用一个宏，就可以将细节掩盖，让用户不要为之困扰：
-
-.. code-block:: c++
-
-   #define __optional(t) decltype(DeduceOptionalType<t>())
-
-   __optional(Pred)   a;
-   __optional(func)   b;
-   __optional(lambda) c;
-
-
-注意，那两个 ``DeduceOptionalType`` 函数，只需要声明，不需要实现。因为我们只关心通过 ``decltype`` 求出的返回值类型。
-对于这个目的，声明就足够了。
-
-现在，可以再去看看那两个函数声明，其表现形式，到意图，像不像前面提到的类模版 ``Deduction Guide`` ?
-
-.. Important::
-
-   - ``C++``  **类模版** 不允许在特化时使用不同的参数类别；也不允许不同的类主模版有同名；
-   - 但 **函数模版** 没有这类限制；
-   - 因而，你总是可以将不同的 **类模版** ，最后通过函数模版来实现表达式的统一。
 
 TypeList
 ----------------------
@@ -1486,144 +1344,203 @@ Flatten
 pipeline
 ____________
 
-当对一个类型列表进行处理时，有可能需要一些列的操作。一个个单独写，然后手工将它们串结起来，即麻烦，也更不容易阅读和理解。
+``pipeline`` 事实上是函数的 ``compose`` 操作。其语意为：
 
-如果有一种手段将多个操作 ``compose`` 在一起，并以 ``pipeline`` 的方式呈现，则无论对于使用，还是对于阅读理解
-代码，都大有益处。
+.. code-block:: haskell
 
-从本质抽象上，可以进入 ``pipeline`` 的每一个操作的 **输入** 都由两部分组成：
+   (.) :: (b->c) -> (a->b) -> (a->c)
+   f . g = \x -> f (g x)
 
-1. 类型列表；
-2. 其它参数；
+即 ``g`` 根据输入 ``x`` ，计算出的结果，做为 ``f`` 的输入，并计算出最终结果。（在 ``Haskell`` 语法里，使用 ``()`` 表示这是
+一个中位符。）
 
-而输出，则应该则可能是：
+而 ``pipeline`` 则是将一连串的函数，依此计算，前一个函数的计算结果，做为后一个函数的输入。对函数式编程而言，
+这是一种强大的基本抽象：一个个函数，通过 ``compose`` 组合在一起，完成更为复杂的计算。
 
-1. 类型列表，比如 ``Transform`` ，``Filter`` ，``ZipWith`` 等等；
-2. 单个类型，比如 ``Elem`` ， ``Fold`` 等；
+但是，并非所有函数都是只有一个输入，所以，如果想让任何具有至少一个参数的函数都能被 ``compose`` ，
+首先必须解决如何设置其它输入参数的问题（除了参与 ``pipeline`` 的那个参数）。一个设计良好的函数式编程语言，会支持 ``curry`` 。
+事实上，对于 ``haskell`` 这样的语言，其函数天然是 ``curry`` 的。对于一个 ``f :: a -> b -> c -> d`` 的函数，由于箭头是右结合
+的，所以其语意是 ``f :: a -> (b -> (c -> d))`` ，即，你给出参数 ``a`` ，求值结果是另外一个类型为 ``b -> (c -> d)`` 的函数；
+而你继续给出参数 ``b`` ，则求值结果为类型为 ``c->d`` 的函数。
 
-而从管道的性质上，输入是一个类型列表，输出也是类一个类型列表。所以，我们必须处理输入时除了类型列表以外的参数，以及输出时是单个类型的情况。
+这就是给编程带来极大的便利，比如：
 
-首先，对于一个操作输入参数存在其它参数的情况，我们可以定义这样的结构，（以 ``Transform`` 为例子 )
+.. code-block:: haskell
+
+   sum . takeWhile (<10000) . filter odd . map (^2) $ [1..]
+
+首先产生一个无穷列表（ ``$`` 的优先级高于 ``.``  ），然后这个无穷列表被传递给左边的整个 ``compose`` 之后的组合。
+
+从右向左，``map (^2)`` ， ``filter odd`` ， ``takeWhile (<10000)`` ，每一个函数都给定了其它参数。最后，计算 ``sum`` 。
+
+因而，如果想让 ``C++`` 泛型计算支持 ``pipeline`` 首先要解决是 ``curry`` 的问题。
+
+Curry
+++++++++++++++++++++++
+
+一个最简单的 ``curry`` 实现如下：
 
 .. code-block:: c++
 
-   template <template <typename T> typename F>
-   struct Transform {
-      template <typename INPUT_TYPE_LIST>
-      using output = Transform_t<F, INPUT_TYPE_LIST>;
+   template <template <typename ...> F, typename ... ARGS>
+   struct Curry {
+       template <typename ... MORE>
+       using apply = F<ARGS..., MORE...>;
    };
 
-``Transform`` 模版的参数是除了 ``TypeList`` 之外的其它参数；而内部的 ``output`` 模版，则是一个单纯的管道元素：
-输入是一个 ``TYPE_LIST`` ，输出也一个 ``TYPE_LIST`` （ ``output`` 在实例化之后为一个 ``TypeList`` ）。
+其背后的思想是：给定一个函数 ``F`` ，同时给出其前面的一部分参数，然后返回另外一个函数 ``apply`` ，其参数是 ``MORE`` 。
 
-注意，我们这里没有用 ``Ts...`` 方式来表现一个 ``TypeList`` ，因为我们想让情况简化，而使用了我们之前定义的 ``TypeList`` ，
-以及任何可以被解析为 ``Head : Tail`` 的结构。等整个 ``pipeline`` 结束后，如果一个结构能够转化成 ``Ts...`` 形式，到
-那时候我们再转换。
 
-上面例子中的两层结构，是这个设计的一个重点，外面的结构是面向用户的，内部的结构是给 ``pipeline`` 框架用来把一些列
-操作 ``compose`` 成 ``PipeLine`` 的。 所有的操作，都应该提供一个这个的结构，比如 ``ZipWith`` :
+这样的实现，无法达到 ``haskell`` 每给出一个参数，估值结果还是一个函数的效果。因为这个实现只允许一次给出前面的参数，然后得到一个函数。
+如果你想继续给出一部分参数，就必须再次 ``Curry`` 。比如：
 
 .. code-block:: c++
 
-   template<typename ANOTHER_LIST>
-   struct ZipWith {
-      template<typename INPUT_TYPE_LIST>
-      using output = type_list::ZipWith_t<INPUT_TYPE_LIST, ANOTHER_LIST>;
-   };
+   template <typename T1, typename T2, typename T3>
+   struct Foo {...};
 
-``Zip`` 是把两个 ``List`` 变换成一对对形成 ``Pair`` 的 ``List`` 。其效果如下：
+   Curry<Foo, int>::apply<double, char>; // Foo<int, double, char>
+
+   Curry<Curry<Foo, int>::apply, double>::apply<char>; // Foo<int, double, char>
+
+注意，我们的 ``Curry`` 实现里，其输入参数 ``F`` ，其参数列表是 ``typename ...`` ，这样的原型可以匹配任意参数列表全部是 ``类型`` 的模版。
+比如：
 
 .. code-block::
 
-   Zip [int, double] [long, short] => [(int, long), (double, short)];
+   template <typename> struct S1;
+   template <typename, typename> struct S2;
+   template <typename, typename ...> struct S1_N;
+   template <typename ...> struct S0_N;
 
-所以，我们把其中一个 ``List`` 当作其它参数，另外一个留给 ``pipeline`` ，因而名字也就变成了 ``ZipWith`` 。
+   Curry<S1>   // OK
+   Curry<S2>   // OK
+   Curry<S1_N> // OK
+   Curry<S0_N> // OK
 
-在所有的操作都形成上面的两层结构之后，我们就可以先定义一个能把两个操作 ``compose`` 在一起的类模版：
+但是，如果你的模版参数里包含有非类型参数，比如 ``int`` 或者 ``模版`` ，则会导致编译失败。比如：
+
+.. code-block::
+
+   template <template <typename> typename> struct S1;
+   template <typename, int> struct S2;
+   template <auto, typename ...> struct S3;
+   template <int> struct S4;
+
+   Curry<S1>   // Fail
+   Curry<S2>   // Fail
+   Curry<S3>   // Fail
+   Curry<S4>   // Fail
+
+
+接着回到我们的 ``Curry`` 。之前那个实现，不仅过于简单，甚至是不健壮的。比如，我们有如下定义：
 
 .. code-block:: c++
 
-   template<typename OP>
-   struct ListOperation {
+   template<typename T1, typename T2>
+   struct Foo {};
 
-      template<typename INPUT>
-      struct Result {
-          using output = typename OP::template type<INPUT>;
-      };
+   template<typename T1, typename T2>
+   using Foo_t = Foo<T1, T2>;
 
-      template<typename COMPOSED_OP>
-      struct Compose {
-         template<typename INPUT>
-         class Result {
-            using output1 = typename OP::template output<INPUT>;
-         public:
-            using output  = typename COMPOSED_OP::template Result<output1>::output;
-         };
-      };
+
+此时，如果我们对 ``Foo_t`` 使用我们的 ``Curry`` ：
+
+.. code-block:: c++
+
+   Curry<Foo_t, int>::apply<double> obj;
+
+将会出现编译错误。
+
+原因是，我们在使用别名模版时，对一个固定参数的 **别名模版** ，在 ``Curry`` 里给其传入的变参。无论是 ``G++`` 还是 ``clang`` 编译器
+都不允许这么做。除非将 **别名模版** 也设计为变参。
+
+这样的限制仅仅是针对 **别名模版** ，对于类模版，则完全没有这类限制。对于任何固定参数的类模版，你总是可以用一个变参包去实例化它。比如：
+
+.. code-block:: c++
+
+   template<typename T1, typename T2> struct Foo {};
+
+   template <typename ... Ts>
+   using Foo_t = Foo<Ts...>; // Foo 定义为固定参数，但却可以给它传递一个变参包；
+
+编译器会根据包实际展开之后，再检查是否符合类模版的需要。如果不匹配，则类型替换失败。
+
+对于类模版，正是因为其对变参包实例化时才展开检查的性质。 ``C++`` 的变参模版灵活到了失去接口约束的作用，比如：
+
+.. code-block:: c++
+
+   template <template <typename> F>
+   struct Service { ... };
+
+   template <typename ... Ts>
+   struct Client1 {...};
+
+   Service<Client1>  c;
+
+这样的接口是满足正常的约束的。因为 ``Service`` 要求任何 ``Client`` 都提供能通过单参数回调的函数。但 ``Client`` 提供了
+一个变参，可以支持任意参数数量。这当然满足 ``Service`` 的要求。
+
+但是，对于这种情况：
+
+.. code-block:: c++
+
+   template <template <typename...> F>
+   struct Service { ... };
+
+   template <typename T>
+   struct Client1 {...};
+
+   Service<Client1>  c;
+
+从设计语意上，``Service`` 要求任何 ``Client`` 都必须提供一个可变参数的函数 ``F`` ，但 ``Client1`` 竟然只提供了单参数的版本。
+这很明显违背了契约。 但 ``C++`` 对于这种情况竟然也是允许的。
+
+在 ``C++11`` 提案过程中，本来这种情况是不允许的。但后来发现提供这样的灵活度，可以给其它设计带来很大便利。比如：
+
+.. code-block:: c++
+
+   template<template <typename ...> typename C, typename ... U>
+   struct Foo {
+        using Container = C<U...>;
    };
 
-``ListOperation`` 的输入参数是一个 ``OP`` ，即之前定义的两级结构模版被实例化之后的类，比如：
+   Foo<std::pair, int, double>::Container c; // std::pair<int, double>
+
+所以， 变参模版，可以匹配属于同一类别（比如都是值或者类型）的任意模版。而最终的正确性，则在实例化时再进行检查。
+
+
+
+我们之前的 ``Curry`` 实现太简单，如果我们想追求可以多批次提供参数，
+而不想 ``curry`` 多次。则可以让实现稍微复杂一些：
 
 .. code-block:: c++
 
-   Transform<ToWrapper>
-   ZipWith<AnotherList>
+   template <template <typename ...> typename F, typename ... ARGS>
+   struct Curry {
+     template <typename ... MORE>
+     using apply = Curry<F, ARGS..., MORE...>;
+   };
 
-它如果不和别的 ``OP`` 组合，则可以直接调用 ``Result`` 模版，从而根据 ``INPUT`` 计算出结果。
+   template <template <typename ...> typename F, typename ... ARGS>
+   requires requires { typename F<ARGS...>; }
+   struct Curry<F, ARGS...> {
+      using type = F<ARGS...>;
+   };
 
-如果它要和别的 `OP` 组合，则可以调用 ``Compose`` 模版，其输入即是另外一个 ``OP`` ，其结果是也是一个
-名为 ``Result`` 的模版，此时，如果你调用这个 ``Result`` 模版，给定一个 ``INPUT`` ，就可以计算出
-两个 ``OP`` 以管道的形式，衔接在一起的计算结果。
+这其中，使用了一个 ``concept`` ，来查看 ``F<ARGS...>`` 是否已经是一个类型（即其参数已经足够），如果是，则直接返回类型；
+否则，返回一个函数 ``apply`` ，当调用 ``apply`` 时，如果继续给出一部分参数，但对于 ``F`` 依然不够，则
+继续返回一个 ``Curry`` 。
 
-这就是设计的另外一个关键：无论一个 ``OP`` 是否``Compose`` 其它 ``OP`` ，你总是得到一个接口形式一样，
-名字也一样的 ``Result`` 模版 。只不过不组合的情况下，调的是自己；组合的情况下，调的是二者组合在一起的结构。
-
-而二者组合一起的算法相当直接：
-
-.. code-block:: c++
-
-     template<typename INPUT>
-     class Result {
-        using output1 = typename OP::template output<INPUT>;
-     public:
-        using output  = typename COMPOSED_OP::template Result<output1>::output;
-     };
-
-即根据参数输入的 ``INPUT`` ，调用 ``OP`` 的内部结构，得到 ``output1`` 之后，再把 ``output`` 当
-作 ``COMPOSED_OP`` 的输入，最终的 ``output`` 即两者组合计算出的结果。如果以管道的形式体现，其语意则是：
+然后，就可以这样使用：
 
 .. code-block:: c++
 
-   INPUT | OP | COMPOSED_OP => output
+   Curry<Foo, int>::apply<double>::apply<char>::type; // Foo<int, double, char>
+   Curry<Foo, int, double>::apply<char>::type;        // Foo<int, double, char>
+   Curry<Foo, int>::apply<double, char>::type;        // Foo<int, double, char>
 
-有了这个 ``ListOperation`` 之后，我们就可以定义我们的 ``Pipe line`` 了：
 
-.. code-block:: c++
-
-   template<typename INPUT, typename ... OPs>
-   class Pipeline {
-       template<typename ... Ts>
-       struct ComposeAll;
-
-       template<typename H, typename ... Ts>
-       struct ComposeAll<H, Ts...> {
-          using output = typename ListOperation<H>::template Compose<typename ComposeAll<Ts...>::output>;
-       };
-
-       template<typename H>
-       struct ComposeAll<H> {
-          using output = ListOperation<H>;
-       };
-
-    public:
-        using output = typename ComposeAll<OPs...>::output::template Result<IN>::output;
-    };
-
-``Pipeline`` 的参数是初始的 ``TypeList`` ，以及 ``OPs`` ，即参与 ``pipeline`` 的多个操作。
-内部的 ``ComposeAll`` 完成的工作很简单，即通过我们前面定义的 ``ListOperation`` 模版，将
-所有 ``OP`` 连接在一起。而最后定义的 ``output`` ，即 ``pipeline`` 计算的最终结果。
-
-然后，我们就可以这样使用它：
 
 .. code-block:: c++
 
@@ -1759,3 +1676,5 @@ Optional
    - ``C++`` 泛型计算是 ``lazy`` 的；
    - ``模式匹配`` 用来进行路径选择（辅助以 ``SFINAE`` 和 ``CONCEPT`` ）， ``递归`` 用来解决 ``循环`` 问题；
    - ``模版`` 是泛型计算的一等公民：对于 ``高阶模版`` 的支持，及 ``闭包`` 性质，可以将其理解为泛型计算时的 ``lambda`` 。
+
+
