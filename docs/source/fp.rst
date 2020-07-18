@@ -1341,8 +1341,9 @@ Flatten
    // result 是模版 MyClass ，被 Ts... 实例化后的类型
    using result = typename Acc::template output<MyClass>;
 
+
 pipeline
-____________
+----------------
 
 ``pipeline`` 事实上是函数的 ``compose`` 操作。其语意为：
 
@@ -1593,7 +1594,7 @@ Curry
                    >::output;
 
 延迟估值
--------------------
+----------------
 
 ``C++`` 的泛型天然就是延迟估值的，因而你可以构造一个无穷列表：
 
