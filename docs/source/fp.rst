@@ -1456,7 +1456,22 @@ Curry
 原因是，我们在使用别名模版时，对一个固定参数的 **别名模版** ，在 ``Curry`` 里给其传入的变参。无论是 ``G++`` 还是 ``clang`` 编译器
 都不允许这么做。除非将 **别名模版** 也设计为变参。
 
-这样的限制仅仅是针对 **别名模版** ，对于类模版，则完全没有这类限制。对于任何固定参数的类模版，你总是可以用一个变参包去实例化它。比如：
+这种检查发生在语意分析阶段。任何违背这种约束的代码都会被编译器查出。比如：
+
+.. code-block:: c++
+
+   template<typename T1, typename T2>
+   using Foo_t = Foo<T1, T2>;
+
+   template <typename ... Ts>
+   using type = Foo<Ts...>;  // 错误。因为Foo_t是定长参数别名模版
+
+   template <typename ... Ts>
+   struct Class {
+      using type = Foo<Ts...>; // 错误。原因同上
+   };
+
+不过，这样的限制仅仅是针对 **别名模版** ，对于类模版，则完全没有这类限制。对于任何固定参数的类模版，你总是可以用一个变参包去实例化它。比如：
 
 .. code-block:: c++
 
@@ -1511,9 +1526,8 @@ Curry
 所以， 变参模版，可以匹配属于同一类别（比如都是值或者类型）的任意模版。而最终的正确性，则在实例化时再进行检查。
 
 
-
-我们之前的 ``Curry`` 实现太简单，如果我们想追求可以多批次提供参数，
-而不想 ``curry`` 多次。则可以让实现稍微复杂一些：
+我们之前的 ``Curry`` 实现太简单，并且会因为固定参数的别名模版而导致错误。如果我们想追求可以多批次提供参数，
+而不想 ``curry`` 多次；并且要避免别名模版错误，则需要更加复杂的实现：
 
 .. code-block:: c++
 
@@ -1540,6 +1554,65 @@ Curry
    Curry<Foo, int>::apply<double>::apply<char>::type; // Foo<int, double, char>
    Curry<Foo, int, double>::apply<char>::type;        // Foo<int, double, char>
    Curry<Foo, int>::apply<double, char>::type;        // Foo<int, double, char>
+
+这个实现，也避免了之前实现的 **别名模版** 问题。你一定会感到奇怪，对于这个版本的第二个特化：
+
+.. code-block:: c++
+
+   template <template <typename ...> typename F, typename ... ARGS>
+   requires requires { typename F<ARGS...>; }
+   struct Curry<F, ARGS...> {
+      using type = F<ARGS...>;
+   };
+
+如果传入的 ``F`` 是一个定长参数 **别名模版** ，里面不同样在给它传递变参吗？
+
+这其中的差别在于，对于表达式 ``F<ARGS...>`` ，在模版实例化之前，编译器无从得知 ``F`` 是一个定长参数 **别名模版** 。
+因而，在模版的第一阶段检查中（未实例化之前的检查），无论从语法还是语意，这个表达式都没有任何问题。
+
+随后，我们我们给出这样一个表达式： ``Curry<Foo_t, int, double>`` ，
+在实例化的过程中， ``F`` 被替换为 ``Foo_t`` ， 而 ``ARGS...`` 则被替换为 ``int, double`` ；此时，虽然编译器
+已经知道 ``Foo_t`` 是一个定长参数 **别名模版** ，但用 ``ARGS...`` 此时已经不再是变参，而是非常具体的 ``int, double`` 。
+因而，此时编译器只需要检查 ``Foo_t<int, double>`` 是否是一个合法的表达式即可。
+
+而我们之前的版本：
+
+.. code-block:: c++
+
+   template <template <typename ...> F, typename ... ARGS>
+   struct Curry {
+       template <typename ... MORE>
+       using apply = F<ARGS..., MORE...>;
+   };
+
+在给出表达式 ``Curry<Foo_t, int, double>`` 之后，编译器同样进入替换阶段。将 ``F`` 替换为 ``Foo_t`` ，将 ``ARGS...`` 替换
+为 ``int, double`` ，然后我们就得到了表达式：
+
+.. code-block:: c++
+
+   struct named_mangled_Curry {
+       template <typename ... MORE>
+       using apply = Foo_t<int, double, MORE...>;
+   };
+
+对于 ``apply`` 模版，此时再次进行语意检查，发现定长参数 **别名模版** ``Foo_t`` 需要传递一个变参包 ``MORE...`` ，这当然
+是一种语意错误。编译失败。
+
+
+新版本的 ``Curry`` 避免了 **别名模版** 错误，但却依然有一个未解决的问题。如果用户直接（ ``Curry`` 时）或间接
+（ ``apply`` 时）给出了超出 ``Foo_t`` 所需要的参数，则特化版本将永远也不可能被选择，只能选择主模版：
+
+.. code-block:: c++
+
+   template <template <typename ...> typename F, typename ... ARGS>
+   struct Curry {
+     template <typename ... MORE>
+     using apply = Curry<F, ARGS..., MORE...>;
+   };
+
+而这个模版，将永远也无法真正调用到 ``F`` ，只能被困在虚幻的 ``Curry`` 世界里打转。
+
+究其原因，是两种写法都没有解决关键的问题， 传入的 ``F`` 究竟有几个参数？
 
 
 
