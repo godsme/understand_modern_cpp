@@ -1687,12 +1687,30 @@ So far so good。但我们忘了一种重要的情况：变参。
    template <typename T1, typename ... Ts> struct C1s;              // 至少1个参数
    template <typename ... Ts> struct Cs;                            // 任意多个参数
 
-   decltype(DeduceArgs<C1s>())    // 二意性
-   decltype(DeduceArgs<Cs>())     // 二意性
+   decltype(DeduceArgs<C1s>())    // 二义性
+   decltype(DeduceArgs<Cs>())     // 二义性
 
 正如我们之前所讨论的，这两个变参模版均可以匹配上面的两个 ``DeduceTemplate`` 函数。
 
-如何让函数模版能够在变参模版万能匹配的情况下，能够区分出定长参数和变参？
+你或许会想，是否可以补充一个变参版本，让它可以匹配变参场景，比如：
+
+.. code-block:: c++
+
+   template <template<typename> typename>
+   auto DeduceArgs() -> Value<1>;
+
+   template <template<typename, typename> typename>
+   auto DeduceArgs() -> Value<2>;
+
+   template <template <typename...> typename>
+   auto DeduceArgs() -> Variadic; // 专门匹配变参
+
+很不幸，这只会让情况变得更糟。因为变参版本可以匹配一切。有了它，所有的匹配都会出现二义性。
+
+另外，需要特别强调的是，这几个函数都是主模版，不存在特化关系。并且，对于模版的 **模版参数** ，是无法通过特化方式来进行区分的。所以，
+我们根本不需要尝试特化方案。
+
+所以，现在核心的问题是：如何让函数模版能够在变参模版万能匹配的情况下，能够区分出定长参数和变参？
 
 下面出场的就是 ``C++`` 社区著名的惯用法 ： ``tag dispatch`` 。
 
@@ -1710,61 +1728,91 @@ So far so good。但我们忘了一种重要的情况：变参。
 .. code-block:: c++
 
     template<template<typename...> typename F>
-    auto DeduceTemplateArgs(variadic_tag) -> Value<1000000000>; // big number, means variadic.
+    auto DeduceTemplateArgs(variadic_tag) -> Variadic;
 
     template<template<typename...> typename F>
     auto DeduceTemplateArgs(fixed_tag)    -> decltype(DeduceArgs<F>());
 
+现在，如果我们给出这样的表达式： ``DeduceTemplateArgs<C1>(fixed_tag{})`` ，将会导致所有 **候选函数** 的的类型替换
+（将 ``F`` 替换为 ``C1`` ），因而，第 2 个候选函数的返回类型变为 ``decltype<DeduceArgs<C1>()>`` ；而其中的
+表达式 ``DeduceArgs<C1>()`` 则会进一步触发 ``DeduceArgs`` 的 **重载决议** (因为有多个候选)；而决议的结果找到了最佳
+匹配版本：
 
 .. code-block:: c++
 
-   using Result = typename Pipeline
-                   < TypeList<Ts...>
-                   , Filter<ActionTrait>
-                   , Transform<AddWrapper>
-                   , FoldL<CombineToOne>
-                   >::output;
+   template <template<typename> typename>
+   auto DeduceArgs() -> Value<1>;
 
-如果，最终的结果是一个 ``TypeList`` 而不是单个类型，你可以通过 ``TypeList`` 的 ``output`` 模版，以回调的方式，将
-一个 ``Ts...`` 传递个你的回调模版。
+而其返回值类型为 ``Value<1>`` ，所以 ``decltype`` 的结果也是 ``Value<1>`` 。
 
-我们前面提到的另外一个问题还没有解决：如果管道中的某个操作输出的是单个类型，而不是一个 ``TypeList`` ，
-但后续其它 ``OP`` 毫无疑问需要的是一个 ``TypeList`` ，怎么办？
-
-答案是，在两个管道衔接处，增加一个检查，如果返现是单个类型 ``T`` ， 就将其转化为 ``TypeList<T>`` ，即将 ``x`` 转
-化为 ``[x]`` 。
-
-.. code-block:: c++
-
-   template<typename T, typename = void>
-   struct TypeListTrait {
-      using type = TypeList<T>;
-   };
-
-   template<typename T>
-   struct TypeListTrait<T, std::enable_if_t<std::is_base_of_v<TypeListSignature, T>>> {
-      using type = T;
-   };
-
-   template<typename INPUT>
-   class Result {
-      using output1 = typename TypeListTrait<typename OP::template output<INPUT>>::type;
-   public:
-      using output  = typename COMPOSED_OP::template Result<output1>::output;
-   };
+做为最为匹配的版本，``DeduceTemplateArgs<C1>(fixed_tag) -> Value<1>`` 是最终的选择。
+因而 ``decltype(DeduceTemplateArgs<C1>(fixed_tag{}))`` 的返回类型正是我们所需要的 ``Value<1>`` 。
 
 
-然后，我们就可以在中间使用 ``Elem`` 了（当然也可以使用其它只输出单个类型的 ``OP`` ）：
+如果此时我们提供一个变参模版 ``Cs`` ，那么表达式 ````DeduceTemplateArgs<Cs>(fixed_tag{})`` 同样会触发上述过程；
+但 ``DeduceArgs<Cs>()`` 会因为二义性而决议失败，进而导致 ``decltype(DeduceArgs<Cs>())`` 失败，最终
+导致 ``DeduceTemplateArgs(fixed_tag)`` 从候选集中被排除出去。
+
+此时，就只剩下 ``DeduceTemplateArgs(variadic_tag)`` 一个版本，但因为 ``fixed_tag`` 与 ``variadic_tag`` 之间的
+继承关系，所以这个版本也是匹配的，并且是现在候选集合中唯一的版本。所以，最终推演的结果是 ``Variadic`` ，代表可变参数。
+
+这里特别说明一下 ``fixed_tag`` 与 ``variadic_tag`` ，我们之所以在
+表达式 ``DeduceTemplateArgs<Cs>(fixed_tag{})`` 里明确指明 ``fixed_tag`` ，是因为我们希望优先使用第二个版本（在两个
+版本都匹配的情况下，``fixed_tag`` 更为匹配）；只有在第二个版本失败的情况下，第一个版本才会得到选择。
+
+在能够得知一个模版的参数个数的情况下，实现一个正确版本的 ``Curry`` 就变为可能。无论你选择上面的那种 ``Curry`` 实现，
+都可以结合参数个数信息，给出一个健壮的实现。在次就不再赘述。
+
+
+Compose
+-------------------------------
+
+``Compose`` 的实现就简单很多。如下：
 
 .. code-block:: c++
 
-   using Result = typename Pipeline
-                   < TypeList<Ts...>
-                   , Filter<ActionTrait>
-                   , Elem<0>
-                   , Transform<AddWrapper>
-                   , FoldL<CombineToOne>
-                   >::output;
+   template <CallableConcept ... OPs>
+   struct Compose;
+
+   template <CallableConcept LAST>
+   struct Compose<LAST> : LAST {};
+
+   template <CallableConcept H, CallableConcept ... OPs>
+   struct Compose<H, OPs...> {
+      template <typename INPUT>
+      using apply = typename Compose<OPs...>::template apply<typename H::template apply<INPUT>>;
+   };
+
+``CallableConcept`` 要求每一个参与组合的 ``OP`` 都必须提供一个 ``apply`` 函数。之所以产生这样的约束，
+因为一则模版参数不能以变参的方式表达传递多个模版，而只能传递类型或值的变参包。二则，一个 ``Curry`` 的结果类型自身
+就是一个带有 ``apply`` 函数的类型。
+
+而 ``compose`` 内部的算法，则非常直接，首先让 ``H`` 进行计算 ``typename H::template apply<INPUT>`` ，其输出
+做为 ``Compose<OPs...>::template apply`` 的输入。
+
+与 ``haskell`` 版本不同的是，其 ``compose`` 是从右向左，这符合数学函数表达习惯。而我们的实现是从左向右，这符合程序员
+对于  ``pipeline`` 的认知。
+
+
+然后，我们将我们对 ``list`` 的各种操作进行 ``Curry`` ，并用宏让一切看起来更简洁：
+
+.. code-block:: c++
+
+   #define take(n)       Curry<Take, Value<n>)
+   #define drop(n)       Curry<Drop, Value<n>)
+   #define filter(f)     Curry<Filter, Value<f>)
+   #define sort(f)       Curry<Sort, Value<f>)
+   #define transform(f)  Curry<Transform, Value<f>)
+
+然后我们就可以在 ``pipeline`` 中直接使用它们：
+
+.. code-block:: c++
+
+   Pipeline<List<1,2,3,4,5,6,7>,
+      take(5),
+      filter([](int n){ return n % 2 > 0; }),
+      transform([](int n) { return n + 10; })>;
+
 
 延迟估值
 ----------------
