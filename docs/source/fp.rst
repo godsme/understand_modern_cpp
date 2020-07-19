@@ -1798,11 +1798,13 @@ Compose
 
 .. code-block:: c++
 
-   #define take(n)       Curry<Take, Value<n>)
-   #define drop(n)       Curry<Drop, Value<n>)
-   #define filter(f)     Curry<Filter, Value<f>)
-   #define sort(f)       Curry<Sort, Value<f>)
-   #define transform(f)  Curry<Transform, Value<f>)
+   #define take(n)       Curry<Take, Value<n>>
+   #define drop(n)       Curry<Drop, Value<n>>
+   #define filter(f)     Curry<Filter, Value<f>>
+   #define sort(f)       Curry<Sort, Value<f>>
+   #define transform(f)  Curry<Transform, Value<f>>
+
+之所以，有 ``Value`` 就是因为 ``Curry`` 要求一个模版的参数必须都是类型 （因为 ``C++`` 要求一个变参包里必须是同一种 ``kind`` ）。
 
 然后我们就可以在 ``pipeline`` 中直接使用它们：
 
@@ -1881,11 +1883,11 @@ Optional
       // Ts... 里，全是Action的子类
    };
 
-   using Result = typename Pipeline
-                   < TypeList<Ts...>
-                   , Transform<ActionTrait>
-                   , Filter<Maybe>
-                   >::output::template output<Bar>;
+   typename Pipeline
+            < TypeList<Ts...>
+             , transform(ActionTrait)
+             , filter(Maybe)
+             >::template exportTo<Bar>;
 
 甚至，你可以将对于 ``void`` 的过滤操作自动内嵌到操作中，比如， ``Transform`` 可以提供一个版本，
 自动抛弃掉结果为 ``void`` 的类型；或者，在 ``Fold`` 时，自动跳过是 ``void`` 的类型。但这都是优化的事情，即便不提供，
