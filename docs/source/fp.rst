@@ -1055,16 +1055,20 @@ Fold
       T const& ref;
    };
 
-   std::ostream& operator<< (std::ostream& os, AddSpace<T> s) {
-      return os << s.ref << ’ ’; // output passed argument and a space
+   auto operator<< (std::ostream& os, AddSpace<T> s) -> std::ostream& {
+      return os << s.ref << ' '; // output passed argument and a space
    }
 
+
    template<typename... Args>
-   void print (Args... args) {
-      ( std::cout << ... << AddSpace(args) ) << ’\n’;
-   􏰃}
+   auto print (Args... args) {
+      ( std::cout << ... << AddSpace(args) ) << '\n'; 
+   }
+
 
 可以看出，``C++17`` 推出的 ``fold expression`` ，极大的简化了程序员对于 **变参** 的计算。
+
+
 
 但不幸的是，``fold expression`` 只能计算 **数值** ，而不能用来计算 **类型** （前面例子中与类型有关的计算，也是要把
 类型映射到数值）。
