@@ -61,8 +61,8 @@ Copy 构造
 
 如果用户没有提供任何构造函数列表，系统会尽力为其生成一个。
 
-如果用户提供了构造函数列表，即便其中查不到 **`copy` 构造** ，但 **`move` 家族** （ `move` 构造/赋值）没有被明确声明，
-那么系统会尽力生成一个 **`copy` 构造** 。
+如果用户提供了构造函数列表，即便其中查不到 **copy 构造** ，但 **move 家族** （ `move` 构造/赋值）没有被明确声明，
+那么系统会尽力生成一个 **copy 构造** 。
 
 .. code-block:: c++
 
@@ -106,13 +106,13 @@ Copy 构造
       // Thing(Thing const&) = delete;
    };
 
-所以它的默认存在性，只受 **`move` 家族** 的影响。
+所以它的默认存在性，只受 **move 家族** 的影响。
 
 
 Move构造
 +++++++++++++
 
-**`move` 构造** 则在 **构造三杰** 中，最为脆弱。
+**move 构造** 则在 **构造三杰** 中，最为脆弱。
 
 如果用户明确声明了如下任何一个，系统都不会自动生成move构造：
 
@@ -127,13 +127,13 @@ Move构造
 Copy 赋值
 ++++++++++++
 
-**`copy` 赋值** 与 **copy构造** 的处境一致。
+**copy 赋值** 与 **copy构造** 的处境一致。
 
 
 Move 赋值
 ++++++++++++
 
-**`move` 赋值** 与 **move构造** 的处境一致。差别只在于家族内自相残杀的对手。
+**move 赋值** 与 **move构造** 的处境一致。差别只在于家族内自相残杀的对手。
 
 .. code-block:: c++
 
@@ -191,7 +191,7 @@ Move 赋值
    static_assert(!std::is_move_constructible_v<Foo>);
 
 
-但注意，这个 `copy构造` 函数，依然可以匹配 non-const 左值引用。因而依然可以进行拷贝构造操作。
+但注意，这个 `copy构造` 函数，依然可以匹配 `non-const` 左值引用。因而依然可以进行拷贝构造操作。
 
 
 .. code-block:: c++
@@ -313,4 +313,108 @@ Move 赋值
    static_assert(std::is_move_assignable_v<Bar>);
 
 这是因为，即便你是动态创建出来的永不销毁的对象，相互之间依然可以进行赋值操作。
+
+
+平凡性
+--------------------
+
+平凡性当然首先是基于可操作性的。你只有首先具备可操作性，才能谈论一个操作是不是平凡的。
+
+而六大金刚一旦是平凡的，那么它们的行为也可以很平凡的分为两类：
+
+  1. 对于 **析构** 和 **默认构造** ，什么也不用做；
+  2. 对于 ``copy/move`` 家族的四大金刚，等同于 ::memcpy；
+
+虽然规范中，对于平凡copy构造，明确的说明了padding并不需要拷贝，但也并不禁止，但编译器基本上都会基于性能和简单性的考量，直接::memcpy了事。
+
+
+为了探究平凡性，我们先构造一个无比平凡的类：
+
+.. code-block:: c++
+
+   struct Thing {
+      Thing() = default;
+
+      Thing(Thing const&) = default;
+      auto operator=(Thing const&) -> Thing& = default;
+
+      Thing(Thing&&) = default;
+      auto operator=(Thing&&) -> Thing& = default;
+
+      ~Thing() = default;
+   };
+
+
+你无法再定义一个比它还要平凡的类，这六大 ``default`` 行为，其实完全不需要写。因而，毫无意外，它们应该都能通过平凡性测试：
+
+.. code-block:: c++
+
+   static_assert(std::is_trivially_default_constructible_v<Thing>);
+
+   static_assert(std::is_trivially_copy_constructible_v<Thing>);
+   static_assert(std::is_trivially_copy_assignable_v<Thing>);
+
+   static_assert(std::is_trivially_move_constructible_v<Thing>);
+   static_assert(std::is_trivially_move_assignable_v<Thing>);
+
+   static_assert(std::is_trivially_destructible_v<Thing>);
+
+
+而 **析构函数** ，继续在平凡性领域表现其王者气质。一旦我们将其变为明确定义的：
+
+
+.. code-block:: c++
+
+   struct Thing {
+      Thing() = default;
+
+      Thing(Thing const&) = default;
+      auto operator=(Thing const&) -> Thing& = default;
+
+      Thing(Thing&&) = default;
+      auto operator=(Thing&&) -> Thing& = default;
+
+      ~Thing() {} // 明确定义
+   };
+
+
+则所有的构造，马上变为非平凡的：
+
+.. code-block:: c++
+
+   static_assert(!std::is_trivially_default_constructible_v<Thing>);
+   static_assert(!std::is_trivially_copy_constructible_v<Thing>);
+   static_assert(!std::is_trivially_move_constructible_v<Thing>);
+
+如果我们将 **析构** 定义为 ``delete`` ，那么连可操作性都没有了，就更不用说操作的平凡性了。
+
+
+也就是说，只有当析构是平凡的，那么三大构造才可能是平凡的。
+
+
+这样的决策并不是在所有的场景下都必然合理。但出于保守的动机，这又是一个合理的选择。比如，我们定义如下一个类：
+
+.. code-block:: c++
+
+   struct Foo {
+      int fd;
+      ~Foo() { if(a != 0) ::close(fd); }
+   };
+
+单纯从数据成员，以及其它五大金刚看，这个类也平凡无比。但那个无比平凡的整数成员，事实上是一个文件描述符。析构函数会负责将其关闭。
+
+对于这个类，其用户必须保证其构造时，都进行零初始化：
+
+... code-block:: C++
+
+    Foo foo{};
+
+当然，你肯定会鄙视这个类的设计者，认为这是一个连菜鸟都不会做出的糟糕设计。但做为语言的设计者，却无法禁止程序员可以这么做。因而只能保守
+的决定，即便默认的构造，拷贝构造都是可操作的（甚至操作是平凡的），但如果你检测它是否是可平凡构造的，它的答案是NO。至少编译器或者框架基于
+平凡性所做出的任何自动决定都会被禁止。让程序员亲自为自己的设计决策负责。
+
+
+
+
+
 
