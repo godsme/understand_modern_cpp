@@ -197,8 +197,11 @@ move 赋值
    Foo foo2{foo};
 
 
-因而, ``std::is_copy_constructible_v<T>`` 测试 ``T(T const&)`` 是否是合法的。而 ``std::is_move_constructible_v<T>`` 测试的则是
- ``T(T&&)`` 表达式的合法性。
+因而, 
+
+  1. ``std::is_copy_constructible_v<T>`` 测试 ``T(T const&)`` 是否是合法的; 而
+  2. ``std::is_move_constructible_v<T>`` 测试的则是 ``T(T&&)`` 表达式的合法性。
+
 
 由于 `可 move 构造` 的条件并不意味着 ``T(std::move(t))`` 必然匹配的是 `move 构造` ，这就会在某些情况下，由于程序员的疏忽而导致非期望的行为。比如：
 
