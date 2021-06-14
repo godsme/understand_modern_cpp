@@ -211,7 +211,15 @@ Move 赋值
    struct Foo {
       Foo(int a) : p{new int(a)} {}
       Foo(Foo const& rhs) : p{new int(*rhs.p)} {}
+      auto operator=(Foo const& rhs) -> Foo& {
+        delete p; p = new int{*rhs.p}; 
+        return *this;
+      }
       Foo(Foo&& rhs) : p{rhs.p} { rhs.p = nullptr; }
+      auto operator=(Foo&& rhs) -> Foo& {
+        delete p; p = rhs.p; rhs.p = nullptr;
+        return *this;
+      }
       ~Foo() { delete p; }
    private:
       int* p;
@@ -282,20 +290,27 @@ Move 赋值
    Bar* bar  = new Bar{};
    Bar* bar2 = new Bar{*bar};
    Bar* bar3 = new Bar{std::move(*bar2)};
+   *bar2     = *bar3;
+   *bar3     = std::move(*bar);
 
 
-但此时，所有其它五大金刚的可操作性检验统统失败。
+但此时，所有构造相关的可操作性检验统统失败。
 
 .. code-block:: c++
 
    static_assert(!std::is_default_constructible_v<Bar>);
    static_assert(!std::is_copy_constructible_v<Bar>);
    static_assert(!std::is_move_constructible_v<Bar>);
-   static_assert(!std::is_copy_assignable_v<Bar>);
-   static_assert(!std::is_move_assignable_v<Bar>);
 
 
-这是因为，虽然对于动态分配的对象而言，可以只创建，不销毁；但对于一个非动态非配的值对象而言，销毁是个必然会经历的过程，一旦无法销毁，也就意味着不能创建。不能创建，当然也就不能赋值。
+这是因为，虽然对于动态分配的对象而言，可以只创建，不销毁；但对于一个非动态非配的值对象而言，销毁是个必然会经历的过程，一旦无法销毁，也就意味着不能创建。
 
+但赋值相关的两个操作，可操作性检验依然是成功的：
 
+.. code-block:: c++
+
+   static_assert(std::is_copy_assignable_v<Bar>);
+   static_assert(std::is_move_assignable_v<Bar>);
+
+这是因为，即便你是动态创建出来的永不销毁的对象，相互之间依然可以进行赋值操作。
 
