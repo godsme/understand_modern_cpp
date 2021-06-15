@@ -11,6 +11,6 @@ Understanding Modern C++
    value-object
    decltype
    auto
-   rule_of_6
+   gang_of_6
    fp
 
