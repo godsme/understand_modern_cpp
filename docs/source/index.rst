@@ -11,6 +11,7 @@ Understanding Modern C++
    value-object
    decltype
    auto
+   initialization  
    gang_of_6
    fp
 
