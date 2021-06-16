@@ -573,7 +573,7 @@ Drop
       using output = typename Drop<N-1, Ts...>::template output<RESULT>;
    };
 
-其中， 模版``output`` 即是计算返回的高阶模版。 而回调的时机则推迟到：
+其中， 模版 ``output`` 即是计算返回的高阶模版。 而回调的时机则推迟到：
 
 .. code-block:: c++
 
