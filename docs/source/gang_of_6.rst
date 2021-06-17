@@ -172,10 +172,16 @@ copy 赋值
 但规范仍然倾向于让 **copy家族** 的地位降低到与 **move家族** 一样。也就是说，如果析构函数被程序员自定义，或者删除；或者copy家族内
 的另一成员由用户明确声明，那么编译器应该放弃对其提供默认实现。
 
-但由于规范仅仅将此定义为 **废弃** ( `deprecated` ) ，而不是一种强制规定，所以编译器的现行实现依然让 **copy家族** 保持了
-比 **move家族** 更高的地位。
+`C++` 标准对其的描述如下：
 
-所以，规范的这种倾向性，更多的是建议程序员遵从 **rule of 5** ，即 **copy/move 家族** + **析构** ，一旦用户考虑了其中一个，就应该
+D.9:
+   The implicit definition of a copy constructor as defaulted is deprecated if the class has a user-declared copy assignment operator or a user-declared destructor. The implicit definition of a copy assignment operator as defaulted is deprecated if the class has a user-declared copy constructor or a user-declared destructor. It is possible that future versions of C++ will specify that these implicit definitions are deleted.
+
+但由于规范仅仅将此定义为 **废弃** ( `deprecated` ) ，而不是一种强制规定，所以编译器的现行实现依然让 **copy家族** 保持了
+比 **move家族** 更高的地位 ( `CLANG` 通过 `-Wdeprecated` ，`GCC` 通过 `-Wdeprecated-copy` 可以给出告警）。
+
+
+所以，规范的这种倾向性，更多的是建议程序员遵从 **rule of 5** ，即 **copy/move 家族** + **析构** ，一旦对一个类考虑了其中一个，就应该
 同时考虑其它四个。
 
 .. note::
