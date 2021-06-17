@@ -174,12 +174,14 @@ copy 赋值
 
 `C++` 标准对其的描述如下：
 
+.. _deprecated_copy:
+
 D.9:
    The implicit definition of a copy constructor as defaulted is deprecated if the class has a user-declared copy assignment operator or a user-declared destructor. The implicit definition of a copy assignment operator as defaulted is deprecated if the class has a user-declared copy constructor or a user-declared destructor. It is possible that future versions of C++ will specify that these implicit definitions are deleted.
 
-但由于规范仅仅将此定义为 **废弃** ( `deprecated` ) ，而不是一种强制规定，所以编译器的现行实现依然让 **copy家族** 保持了
-比 **move家族** 更高的地位 ( `CLANG` 通过 `-Wdeprecated` ，`GCC` 通过 `-Wdeprecated-copy` 可以给出告警）。
+但由于规范仅仅将此定义为 **废弃** ( `deprecated` ) ，而不是一种强制规定， 所以编译器的现行实现依然让 **copy家族** 保持了比 **move家族** 更高的地位 ( `CLANG` 通过 `-Wdeprecated` ，`GCC` 通过 `-Wdeprecated-copy` 可以给出告警）。
 
+而按照 `C++` 的保守传统，从 **废弃** 到 **禁止** 恐怕将是一个非常漫长的过程 (甚至可能永不发生）, 一个典型的例子是：对 `bool` 的 `++` 演算，在 `C++ 98` 里就被明确废弃了。但这么一个简单的，很少有人使用 (误用）的特性，直到 `C++ 17` 才被彻底禁止。 对于 **copy 构造/赋值** 这种使用广泛，波及面极大的特性，我很怀疑其最终会被禁止。
 
 所以，规范的这种倾向性，更多的是建议程序员遵从 **rule of 5** ，即 **copy/move 家族** + **析构** ，一旦对一个类考虑了其中一个，就应该
 同时考虑其它四个。
