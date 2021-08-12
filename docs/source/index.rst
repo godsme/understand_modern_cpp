@@ -14,5 +14,6 @@ Understanding Modern C++
    auto
    initialization  
    gang_of_6
+   sfinae
    fp
 
